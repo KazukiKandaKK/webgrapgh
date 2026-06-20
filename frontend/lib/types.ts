@@ -66,11 +66,41 @@ export type MainToWorker =
 
 // ---------- worker → main thread ----------
 
+/**
+ * Per-metric SAB pair (double-buffered). Worker writes alternating slots; main
+ * reads the one identified by `sabTick.gen % 2`.
+ */
+export type MetricSABs = {
+  /** Capacity (max points each slot can hold). */
+  capacity: number;
+  /** Slot 0: timestamps (seconds). */
+  tA: SharedArrayBuffer;
+  /** Slot 0: values. */
+  vA: SharedArrayBuffer;
+  /** Slot 1: timestamps. */
+  tB: SharedArrayBuffer;
+  /** Slot 1: values. */
+  vB: SharedArrayBuffer;
+};
+
 export type WorkerToMain =
   | { type: "status"; channel: "metrics" | "logs"; state: "connecting" | "open" | "closed" | "error"; detail?: string }
   /**
-   * Metric render payload. Float64Arrays are transferable so they cost nothing
-   * to hand off. The main thread feeds them straight to `uplot.setData`.
+   * One-time handshake: hands over per-metric SharedArrayBuffer pairs. The
+   * bridge wraps these in Float64Array views and caches them. Sent only when
+   * `crossOriginIsolated && SharedArrayBuffer` are available; otherwise the
+   * worker emits `frame` messages via the transferable fallback path.
+   */
+  | { type: "sabInit"; sabs: Record<MetricName, MetricSABs> }
+  /**
+   * Per-flush notification: which generation slot to read from and how many
+   * points are valid in each metric's slot. Tiny payload (~200 bytes).
+   */
+  | { type: "sabTick"; gen: number; sizes: Record<MetricName, number> }
+  /**
+   * Fallback frame for non-SAB environments. Float64Arrays are transferable
+   * so cost nothing to hand off, but the wrapper + ArrayBuffer pair still
+   * allocates per flush.
    */
   | {
       type: "frame";

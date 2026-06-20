@@ -5,6 +5,7 @@ import type {
   LogEvent,
   MainToWorker,
   MetricName,
+  MetricSABs,
   WireSample,
   WorkerToMain,
 } from "@/lib/types";
@@ -78,6 +79,17 @@ type State = {
   stopped: boolean;
   /** Visible time window (ms). null = unfiltered (use entire ring buffer). */
   windowMs: number | null;
+  /** SAB output slots (only populated when crossOriginIsolated + SAB). */
+  sabSlots: Map<MetricName, SabSlots> | null;
+  /** Monotonically increasing generation number for double-buffer indexing. */
+  sabGen: number;
+};
+
+type SabSlots = {
+  tA: Float64Array;
+  vA: Float64Array;
+  tB: Float64Array;
+  vB: Float64Array;
 };
 
 const state: State = {
@@ -101,6 +113,8 @@ const state: State = {
   wsLogsUrl: "",
   stopped: false,
   windowMs: null,
+  sabSlots: null,
+  sabGen: 0,
 };
 
 self.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
@@ -141,6 +155,11 @@ function initialize(msg: Extract<MainToWorker, { type: "init" }>) {
     state.buffers.set(name, makeBuffer(state.bufferSize));
   }
 
+  // Try to set up SAB output. crossOriginIsolated is the gate set by
+  // COOP=same-origin + COEP=credentialless on the document. If false we'll
+  // silently fall back to the transferable path.
+  setupSABOutput();
+
   startFlushLoops();
 
   // Load both histories in parallel, then connect both sockets.
@@ -148,6 +167,57 @@ function initialize(msg: Extract<MainToWorker, { type: "init" }>) {
     connectMetrics();
     connectLogs();
   });
+}
+
+/**
+ * Allocate two SAB-backed Float64Array slots per metric and post them to the
+ * main thread one time. The main bridge wraps them in views and caches them;
+ * thereafter we only send tiny `sabTick` messages.
+ */
+function setupSABOutput() {
+  // Feature-detect. In some browsers `crossOriginIsolated` is not on the
+  // DedicatedWorkerGlobalScope type, so we read it permissively.
+  const hasSAB = typeof SharedArrayBuffer !== "undefined";
+  const isolated = (self as unknown as { crossOriginIsolated?: boolean })
+    .crossOriginIsolated === true;
+  if (!hasSAB || !isolated) {
+    state.sabSlots = null;
+    // eslint-disable-next-line no-console
+    console.info(
+      `[worker] SAB unavailable (SAB=${hasSAB}, isolated=${isolated}); ` +
+        `falling back to transferable Float64Arrays.`
+    );
+    return;
+  }
+
+  const sabs: Record<string, MetricSABs> = {};
+  const slots = new Map<MetricName, SabSlots>();
+  const cap = state.maxRenderPoints;
+  const byteLen = cap * 8;
+
+  for (const name of state.metrics) {
+    const tA = new SharedArrayBuffer(byteLen);
+    const vA = new SharedArrayBuffer(byteLen);
+    const tB = new SharedArrayBuffer(byteLen);
+    const vB = new SharedArrayBuffer(byteLen);
+    sabs[name] = { capacity: cap, tA, vA, tB, vB };
+    slots.set(name, {
+      tA: new Float64Array(tA),
+      vA: new Float64Array(vA),
+      tB: new Float64Array(tB),
+      vB: new Float64Array(vB),
+    });
+  }
+  state.sabSlots = slots;
+  state.sabGen = 0;
+  // eslint-disable-next-line no-console
+  console.info(
+    `[worker] SAB output enabled: ${state.metrics.length} metrics × ` +
+      `2 slots × ${cap} points = ${
+        (state.metrics.length * 2 * byteLen * 2) / 1024
+      } KB shared (zero per-flush allocation).`
+  );
+  post({ type: "sabInit", sabs: sabs as Record<MetricName, MetricSABs> });
 }
 
 function teardown() {
@@ -360,74 +430,127 @@ function startFlushLoops() {
 
 // Reused across every flushFrame call so we don't generate a fresh object +
 // array per tick. The {t, v} slot objects inside are still allocated per
-// metric per flush — small + nursery-friendly — but the outer container
-// churn is eliminated.
+// metric per flush in the transferable fallback path — small + nursery-
+// friendly — but the outer container churn is eliminated.
 const reusablePayload: Record<string, { t: Float64Array; v: Float64Array }> = {};
 const reusableTransfers: ArrayBuffer[] = [];
+// Reused across SAB-path flushes too.
+const reusableSabSizes: Record<string, number> = {};
 
 /**
- * Drain ring buffers into chronological Float64Arrays, optionally restricted
- * to the visible time window, downsample by stride, and ship to the main
- * thread via transferable buffers.
+ * Compute the [startOffset, sliceSize, stride, outLen] for one metric given
+ * the current windowMs filter. Returns null if the slice is empty.
+ */
+function computeSlice(buf: RingBuffer, windowMs: number | null, maxRenderPoints: number) {
+  const cap = buf.t.length;
+  const startIdx = buf.size < cap ? 0 : buf.head;
+
+  let startOffset = 0;
+  if (windowMs !== null) {
+    const newestReadIdx = (startIdx + buf.size - 1 + cap) % cap;
+    const cutoff = buf.t[newestReadIdx] - windowMs;
+    startOffset = buf.size;
+    for (let i = 0; i < buf.size; i++) {
+      const readIdx = (startIdx + i) % cap;
+      if (buf.t[readIdx] >= cutoff) {
+        startOffset = i;
+        break;
+      }
+    }
+  }
+  const sliceSize = buf.size - startOffset;
+  if (sliceSize <= 0) return null;
+  const stride = Math.max(1, Math.ceil(sliceSize / maxRenderPoints));
+  const outLen = Math.ceil(sliceSize / stride);
+  return { cap, startIdx, startOffset, sliceSize, stride, outLen };
+}
+
+/**
+ * Drain ring buffers, optionally restricted to the visible time window,
+ * downsample by stride, and either:
+ *   - SAB path: write into the current generation's SAB slot in-place and
+ *     send a tiny `sabTick` notification (zero per-flush allocation), OR
+ *   - Transfer path: allocate fresh Float64Arrays and transfer them.
  */
 function flushFrame() {
   if (!state.frameDirty) return;
   state.frameDirty = false;
+  if (state.sabSlots !== null) {
+    flushFrameSAB();
+  } else {
+    flushFrameTransfer();
+  }
+}
 
-  const windowMs = state.windowMs;
-  // Reset reused containers. Property delete on a small object is cheap and
-  // V8 keeps the hidden class stable as long as we always touch the same
-  // metric keys (which we do).
+function flushFrameSAB() {
+  const slots = state.sabSlots!;
+  const gen = state.sabGen + 1;
+  const useA = (gen & 1) === 1;
+  // Reset sizes container.
+  for (const k in reusableSabSizes) delete reusableSabSizes[k];
+
+  let any = false;
+  for (const name of state.metrics) {
+    const buf = state.buffers.get(name);
+    if (!buf || buf.size === 0) continue;
+    const slot = slots.get(name);
+    if (!slot) continue;
+
+    const s = computeSlice(buf, state.windowMs, state.maxRenderPoints);
+    if (s === null) continue;
+
+    const tOut = useA ? slot.tA : slot.tB;
+    const vOut = useA ? slot.vA : slot.vB;
+    // Cap to the SAB capacity (should always hold since stride targets
+    // maxRenderPoints, but guard against off-by-one).
+    const limit = Math.min(s.outLen, tOut.length);
+
+    let writeIdx = 0;
+    for (let i = 0; i < s.sliceSize && writeIdx < limit; i += s.stride) {
+      const readIdx = (s.startIdx + s.startOffset + i) % s.cap;
+      tOut[writeIdx] = buf.t[readIdx] / 1000;
+      vOut[writeIdx] = buf.v[readIdx];
+      writeIdx++;
+    }
+    reusableSabSizes[name] = writeIdx;
+    any = true;
+  }
+  if (!any) return;
+  state.sabGen = gen;
+  self.postMessage({
+    type: "sabTick",
+    gen,
+    sizes: reusableSabSizes,
+  } as WorkerToMain);
+}
+
+function flushFrameTransfer() {
   for (const k in reusablePayload) delete reusablePayload[k];
   reusableTransfers.length = 0;
-  const payload = reusablePayload;
-  const transfers = reusableTransfers;
 
   for (const name of state.metrics) {
     const buf = state.buffers.get(name);
     if (!buf || buf.size === 0) continue;
 
-    const cap = buf.t.length;
-    const startIdx = buf.size < cap ? 0 : buf.head;
+    const s = computeSlice(buf, state.windowMs, state.maxRenderPoints);
+    if (s === null) continue;
 
-    // Find the first offset within the desired window.
-    let startOffset = 0;
-    if (windowMs !== null) {
-      const newestReadIdx = (startIdx + buf.size - 1 + cap) % cap;
-      const cutoff = buf.t[newestReadIdx] - windowMs;
-      startOffset = buf.size;
-      for (let i = 0; i < buf.size; i++) {
-        const readIdx = (startIdx + i) % cap;
-        if (buf.t[readIdx] >= cutoff) {
-          startOffset = i;
-          break;
-        }
-      }
-    }
-
-    const sliceSize = buf.size - startOffset;
-    if (sliceSize <= 0) continue;
-
-    const stride = Math.max(1, Math.ceil(sliceSize / state.maxRenderPoints));
-    const outLen = Math.ceil(sliceSize / stride);
-    const t = new Float64Array(outLen);
-    const v = new Float64Array(outLen);
-
+    const t = new Float64Array(s.outLen);
+    const v = new Float64Array(s.outLen);
     let writeIdx = 0;
-    for (let i = 0; i < sliceSize; i += stride) {
-      const readIdx = (startIdx + startOffset + i) % cap;
+    for (let i = 0; i < s.sliceSize; i += s.stride) {
+      const readIdx = (s.startIdx + s.startOffset + i) % s.cap;
       t[writeIdx] = buf.t[readIdx] / 1000;
       v[writeIdx] = buf.v[readIdx];
       writeIdx++;
     }
-
-    payload[name] = { t, v };
-    transfers.push(t.buffer, v.buffer);
+    reusablePayload[name] = { t, v };
+    reusableTransfers.push(t.buffer, v.buffer);
   }
 
-  if (Object.keys(payload).length === 0) return;
-  const message: WorkerToMain = { type: "frame", metrics: payload as never };
-  self.postMessage(message, transfers);
+  if (Object.keys(reusablePayload).length === 0) return;
+  const message: WorkerToMain = { type: "frame", metrics: reusablePayload as never };
+  self.postMessage(message, reusableTransfers);
 }
 
 /** Throttled emission of the log total — drives the virtualizer's `count`. */
