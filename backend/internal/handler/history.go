@@ -33,11 +33,17 @@ func History(pool *pgxpool.Pool) echo.HandlerFunc {
 				minutes = n
 			}
 		}
+		maxPoints := 0
+		if q := c.QueryParam("max_points"); q != "" {
+			if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 100_000 {
+				maxPoints = n
+			}
+		}
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
 		defer cancel()
 
-		raw, err := db.FetchHistory(ctx, pool, names, time.Duration(minutes)*time.Minute)
+		raw, err := db.FetchHistory(ctx, pool, names, time.Duration(minutes)*time.Minute, maxPoints)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 		}

@@ -221,8 +221,10 @@ type Point struct {
 }
 
 // FetchHistory returns the last `since` of points for each metric in `names`,
-// ordered chronologically.
-func FetchHistory(ctx context.Context, pool *pgxpool.Pool, names []string, since time.Duration) (map[string][]Point, error) {
+// ordered chronologically. When `maxPoints > 0` and a metric has more rows
+// than that, the result is stride-downsampled in-process so the JSON payload
+// stays small. The most recent point is always included.
+func FetchHistory(ctx context.Context, pool *pgxpool.Pool, names []string, since time.Duration, maxPoints int) (map[string][]Point, error) {
 	out := make(map[string][]Point, len(names))
 	cutoff := time.Now().Add(-since)
 	for _, n := range names {
@@ -244,6 +246,21 @@ func FetchHistory(ctx context.Context, pool *pgxpool.Pool, names []string, since
 			pts = append(pts, Point{TimeMs: ts.UnixMilli(), Value: v})
 		}
 		rows.Close()
+		if maxPoints > 0 && len(pts) > maxPoints {
+			stride := (len(pts) + maxPoints - 1) / maxPoints
+			if stride < 1 {
+				stride = 1
+			}
+			sampled := make([]Point, 0, maxPoints+1)
+			for i := 0; i < len(pts); i += stride {
+				sampled = append(sampled, pts[i])
+			}
+			// Always include the latest point so live updates align cleanly.
+			if last := pts[len(pts)-1]; len(sampled) == 0 || sampled[len(sampled)-1].TimeMs != last.TimeMs {
+				sampled = append(sampled, last)
+			}
+			pts = sampled
+		}
 		out[n] = pts
 	}
 	return out, nil

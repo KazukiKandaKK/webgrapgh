@@ -194,7 +194,11 @@ function pushPoint(buf: RingBuffer, t: number, v: number) {
 async function loadMetricHistory() {
   try {
     post({ type: "status", channel: "metrics", state: "connecting", detail: "history" });
-    const url = `${state.apiBase}/api/history?metrics=${state.metrics.join(",")}&minutes=60`;
+    // Cap the server-side payload: ask for at most `bufferSize` points per
+    // metric. The DB still scans the full range but the response is small.
+    const url = `${state.apiBase}/api/history?metrics=${state.metrics.join(
+      ","
+    )}&minutes=60&max_points=${state.bufferSize}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`history ${res.status}`);
     const body = (await res.json()) as HistoryResponse;
