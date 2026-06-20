@@ -66,6 +66,43 @@ docker compose up --build -d
 - ブラウザで `http://localhost:3000` を開くと、履歴 1h を初期描画 → WS 接続 → リアルタイム更新に切り替わります。
 - `NEXT_PUBLIC_*` はビルド時に bundle に焼き込まれるため、ホスト名やポートを変えた場合は `docker compose build frontend` で再ビルドが必要です。
 
+### 大量データの投入 (bulk seed CLI)
+
+サーバ起動時の auto-seed (`SeedIfEmpty`) は「空のときだけ・直近 1h 分」しか入れません。
+それより大量のデータを入れたいときは専用 CLI `seed` を使います。`docker compose` 経由なら:
+
+```bash
+# 24h × 100Hz × 4 metric ≒ 34.5M 行をテーブル初期化のうえ投入
+docker compose --profile seed run --rm seed --hours 24 --hz 100 --reset
+
+# 既存データを残して 1h × 1000Hz を追加
+docker compose --profile seed run --rm seed --hours 1 --hz 1000
+
+# メトリクス指定 + バッチサイズ指定
+docker compose --profile seed run --rm seed \
+  --metrics cpu,memory --hours 6 --hz 50 --batch 20000 --reset
+```
+
+ホスト直接実行:
+
+```bash
+cd backend && go run ./cmd/seed --hours 24 --hz 100 --reset
+```
+
+主要フラグ:
+
+| flag | default | 説明 |
+|------|---------|------|
+| `--hours` | 1 | `[now - hours, now]` の範囲に均等配置 |
+| `--hz` | 0 | メトリクスあたり毎秒サンプル数。指定すると `--points-per-metric` を上書き |
+| `--points-per-metric` | 20000 | hz 指定がない場合のメトリクスあたり総点数 |
+| `--metrics` | cpu,memory,network,disk | カンマ区切りで対象を絞り込み |
+| `--batch` | 10000 | `COPY` バッチサイズ。大きいほど速いがメモリも食う |
+| `--reset` | false | 投入前に `TRUNCATE metrics RESTART IDENTITY` |
+| `--quiet` | false | 進捗ログ抑止 |
+
+内部は pgx の `CopyFrom` を使った PostgreSQL COPY なので、ローカル PG で概ね 100k〜500k rows/s 程度で流せます。
+
 ### ローカル開発で個別に動かす
 
 PG だけ Docker で立て、backend / frontend はホストで実行:

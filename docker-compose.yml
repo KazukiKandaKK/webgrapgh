@@ -42,6 +42,29 @@ services:
     ports:
       - "${BACKEND_PORT:-8080}:8080"
 
+  # One-shot bulk seeder. Lives in the `seed` profile so it never runs as part
+  # of a plain `docker compose up`. Trigger explicitly:
+  #
+  #   docker compose --profile seed run --rm seed --hours 24 --hz 100 --reset
+  #
+  # Reuses the backend image (both /app/server and /app/seed are baked in).
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: webgrapgh-backend
+    profiles: ["seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgraph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgraph}
+      POSTGRES_DB: ${POSTGRES_DB:-webgraph}
+    entrypoint: ["/app/seed"]
+
   frontend:
     build:
       context: ./frontend

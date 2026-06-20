@@ -39,8 +39,84 @@ func EnsureSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	return err
 }
 
-// SeedIfEmpty inserts `perMetric` synthetic points spread evenly across the last
-// hour for each metric name, but only when the metrics table is empty.
+// BulkOptions configures synthetic-data ingestion via PostgreSQL COPY.
+type BulkOptions struct {
+	Names     []string
+	Start     time.Time
+	End       time.Time
+	PerMetric int
+	Batch     int
+	// Reset truncates the metrics table before inserting.
+	Reset bool
+	// OnProgress, if set, is invoked once per completed batch with the absolute
+	// number of rows written for the metric and the total target.
+	OnProgress func(name string, written, total int)
+}
+
+// Bulk inserts `opts.PerMetric` synthetic points evenly distributed across
+// [Start, End] for every metric in `opts.Names`, using PostgreSQL COPY for
+// throughput. It returns the total row count actually inserted.
+func Bulk(ctx context.Context, pool *pgxpool.Pool, opts BulkOptions) (int64, error) {
+	if len(opts.Names) == 0 {
+		opts.Names = MetricNames
+	}
+	if opts.PerMetric <= 0 {
+		return 0, fmt.Errorf("PerMetric must be > 0")
+	}
+	if opts.Batch <= 0 {
+		opts.Batch = 5000
+	}
+	if !opts.End.After(opts.Start) {
+		return 0, fmt.Errorf("End must be after Start")
+	}
+
+	if opts.Reset {
+		if _, err := pool.Exec(ctx, `TRUNCATE TABLE metrics RESTART IDENTITY`); err != nil {
+			return 0, fmt.Errorf("truncate: %w", err)
+		}
+	}
+
+	step := opts.End.Sub(opts.Start) / time.Duration(opts.PerMetric)
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+	var total int64
+
+	for _, name := range opts.Names {
+		base, amp, period := metricShape(name)
+		rows := make([][]any, 0, opts.Batch)
+		written := 0
+		for i := 0; i < opts.PerMetric; i++ {
+			t := opts.Start.Add(time.Duration(i) * step)
+			v := syntheticValue(base, amp, period, t, rng)
+			rows = append(rows, []any{t, name, v})
+			if len(rows) >= opts.Batch {
+				if err := copyMetrics(ctx, pool, rows); err != nil {
+					return total, err
+				}
+				written += len(rows)
+				total += int64(len(rows))
+				rows = rows[:0]
+				if opts.OnProgress != nil {
+					opts.OnProgress(name, written, opts.PerMetric)
+				}
+			}
+		}
+		if len(rows) > 0 {
+			if err := copyMetrics(ctx, pool, rows); err != nil {
+				return total, err
+			}
+			written += len(rows)
+			total += int64(len(rows))
+			if opts.OnProgress != nil {
+				opts.OnProgress(name, written, opts.PerMetric)
+			}
+		}
+	}
+	return total, nil
+}
+
+// SeedIfEmpty inserts `perMetric` synthetic points spread evenly across the
+// last hour for each metric name, but only when the metrics table is empty.
+// Intended for the on-boot auto-seed path; use Bulk directly for large loads.
 func SeedIfEmpty(ctx context.Context, pool *pgxpool.Pool, perMetric int) error {
 	var count int64
 	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM metrics`).Scan(&count); err != nil {
@@ -51,33 +127,15 @@ func SeedIfEmpty(ctx context.Context, pool *pgxpool.Pool, perMetric int) error {
 		return nil
 	}
 	log.Printf("seed: inserting %d points per metric (%d total)…", perMetric, perMetric*len(MetricNames))
-
 	end := time.Now()
-	start := end.Add(-time.Hour)
-	step := end.Sub(start) / time.Duration(perMetric)
-
-	const batch = 2000
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
-	for _, name := range MetricNames {
-		base, amp, period := metricShape(name)
-		rows := make([][]any, 0, batch)
-		for i := 0; i < perMetric; i++ {
-			t := start.Add(time.Duration(i) * step)
-			v := syntheticValue(base, amp, period, t, rng)
-			rows = append(rows, []any{t, name, v})
-			if len(rows) >= batch {
-				if err := copyMetrics(ctx, pool, rows); err != nil {
-					return err
-				}
-				rows = rows[:0]
-			}
-		}
-		if len(rows) > 0 {
-			if err := copyMetrics(ctx, pool, rows); err != nil {
-				return err
-			}
-		}
+	if _, err := Bulk(ctx, pool, BulkOptions{
+		Names:     MetricNames,
+		Start:     end.Add(-time.Hour),
+		End:       end,
+		PerMetric: perMetric,
+		Batch:     2000,
+	}); err != nil {
+		return err
 	}
 	log.Printf("seed: done")
 	return nil
