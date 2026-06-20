@@ -9,10 +9,19 @@ export type HistoryResponse = {
   metrics: Record<MetricName, { t: number[]; v: number[] }>;
 };
 
-/** WebSocket frame shape from the Go backend. */
+/** WebSocket frame shape from the Go metrics endpoint. */
 export type WireSample = {
   t: number;
   v: Record<string, number>;
+};
+
+/** Single log event — matches Go's logs.Event JSON shape. */
+export type LogEvent = {
+  id: number;
+  t: number;       // unix ms
+  level: string;   // INFO / WARN / ERROR / DEBUG
+  src: string;
+  msg: string;
 };
 
 // ---------- main thread → worker ----------
@@ -21,26 +30,36 @@ export type MainToWorker =
   | {
       type: "init";
       wsUrl: string;
+      wsLogsUrl: string;
       apiBase: string;
       metrics: readonly MetricName[];
-      /** Max points retained per metric in the ring buffer. */
+      /** Max metric points retained per metric in the ring buffer. */
       bufferSize: number;
       /** Max points pushed to the main thread per frame (downsample target). */
       maxRenderPoints: number;
-      /** Throttle main-thread flushes to this rate (Hz). */
+      /** Throttle main-thread frame flushes to this rate (Hz). */
       flushHz: number;
+      /** Max log events retained in the worker ring. */
+      logBufferSize: number;
+      /** Throttle logTotal notifications to this rate (Hz). */
+      logTotalHz: number;
     }
-  | { type: "stop" };
+  | { type: "stop" }
+  | { type: "getLogs"; requestId: number; offset: number; limit: number };
 
 // ---------- worker → main thread ----------
 
 export type WorkerToMain =
-  | { type: "status"; state: "connecting" | "open" | "closed" | "error"; detail?: string }
+  | { type: "status"; channel: "metrics" | "logs"; state: "connecting" | "open" | "closed" | "error"; detail?: string }
   /**
-   * The render payload. Float64Arrays are transferable so they cost nothing to
-   * hand off. The main thread feeds them straight to `uplot.setData`.
+   * Metric render payload. Float64Arrays are transferable so they cost nothing
+   * to hand off. The main thread feeds them straight to `uplot.setData`.
    */
   | {
       type: "frame";
       metrics: Record<MetricName, { t: Float64Array; v: Float64Array }>;
-    };
+    }
+  /** Throttled log-count notification — drives the virtualizer's row count. */
+  | { type: "logTotal"; total: number }
+  /** Response to a `getLogs` request. requestId matches the original message. */
+  | { type: "logSlice"; requestId: number; offset: number; items: LogEvent[] };

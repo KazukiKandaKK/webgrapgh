@@ -138,6 +138,27 @@ cd frontend && npm install && npm run dev
 { "t": 1718870000123, "v": { "cpu": 42.1, "memory": 67.3, "network": 12.4, "disk": 88.1 } }
 ```
 
+### `GET /api/logs/history?limit=10000`
+
+```json
+[
+  { "id": 1, "t": 1718870000000, "level": "INFO",  "src": "api",  "msg": "request handled in 42ms" },
+  { "id": 2, "t": 1718870000050, "level": "ERROR", "src": "auth", "msg": "dial tcp ... connection refused" }
+]
+```
+
+最大 30,000 件（ストアの ring buffer 容量）。
+
+### `WS /ws/logs`
+
+サーバ → クライアント (1 イベントずつ):
+
+```json
+{ "id": 12345, "t": 1718870000123, "level": "WARN", "src": "queue", "msg": "retry 1/3 for job-42" }
+```
+
+`LOG_PUSH_HZ` (default 30) で生成頻度を制御。
+
 ## なぜ速いのか
 
 - **JSON.parse をワーカに閉じ込めた** ことでメイン V8 ヒープが汚れず、GC が React 描画を止めない。

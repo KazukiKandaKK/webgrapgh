@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { METRICS, type MetricName } from "@/lib/types";
-import { startWorker } from "@/lib/workerBridge";
+import { useWorker } from "@/lib/workerContext";
 import { UplotChart, type UplotChartHandle } from "./UplotChart";
 
 const METRIC_META: Record<MetricName, { label: string; color: string; unit: string }> = {
@@ -12,7 +12,13 @@ const METRIC_META: Record<MetricName, { label: string; color: string; unit: stri
   disk:    { label: "Disk I/O",        color: "#facc15", unit: "%" },
 };
 
+type WSStatus = {
+  metrics: { state: string; detail?: string };
+  logs: { state: string; detail?: string };
+};
+
 export function DashboardGrid() {
+  const controller = useWorker();
   const chartRefs = useRef<Record<MetricName, UplotChartHandle | null>>({
     cpu: null,
     memory: null,
@@ -20,39 +26,32 @@ export function DashboardGrid() {
     disk: null,
   });
 
-  // status is the *only* React state on this page. It's only updated when the
-  // WS connection state changes — never per-frame.
-  const [status, setStatus] = useState<{ state: string; detail?: string }>({
-    state: "init",
+  // Status is the only React state. It changes only on connection events.
+  const [status, setStatus] = useState<WSStatus>({
+    metrics: { state: "init" },
+    logs: { state: "init" },
   });
 
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
-    const wsUrl =
-      process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8080/ws";
-
-    const stop = startWorker({
-      apiBase,
-      wsUrl,
-      metrics: METRICS,
-      bufferSize: 5000,
-      maxRenderPoints: 2000,
-      flushHz: 30,
-      onStatus: (state, detail) => setStatus({ state, detail }),
-      onFrame: (metrics) => {
-        // Imperative fan-out: no React state touched, no re-renders.
-        for (const name of METRICS) {
-          const series = metrics[name];
-          if (!series) continue;
-          chartRefs.current[name]?.setData(series.t, series.v);
-        }
-      },
+    const offFrame = controller.onFrame((metrics) => {
+      // Imperative fan-out: no React state touched, no re-renders.
+      for (const name of METRICS) {
+        const series = metrics[name];
+        if (!series) continue;
+        chartRefs.current[name]?.setData(series.t, series.v);
+      }
     });
-    return stop;
-  }, []);
+    const offStatus = controller.onStatus((channel, state, detail) => {
+      setStatus((prev) => ({ ...prev, [channel]: { state, detail } }));
+    });
+    return () => {
+      offFrame();
+      offStatus();
+    };
+  }, [controller]);
 
   return (
-    <section className="flex-1 p-6">
+    <section className="p-6">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">System Metrics</h1>
@@ -60,7 +59,10 @@ export function DashboardGrid() {
             過去 1 時間 + リアルタイム (Worker → uPlot direct setData)
           </p>
         </div>
-        <StatusPill state={status.state} detail={status.detail} />
+        <div className="flex gap-2">
+          <StatusPill label="metrics" state={status.metrics.state} detail={status.metrics.detail} />
+          <StatusPill label="logs" state={status.logs.state} detail={status.logs.detail} />
+        </div>
       </header>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -91,7 +93,15 @@ export function DashboardGrid() {
   );
 }
 
-function StatusPill({ state, detail }: { state: string; detail?: string }) {
+function StatusPill({
+  label,
+  state,
+  detail,
+}: {
+  label: string;
+  state: string;
+  detail?: string;
+}) {
   const color =
     state === "open"
       ? "bg-emerald-500/20 text-emerald-300 border-emerald-700"
@@ -103,8 +113,7 @@ function StatusPill({ state, detail }: { state: string; detail?: string }) {
       className={`rounded-full border px-3 py-1 text-xs font-medium ${color}`}
       title={detail ?? ""}
     >
-      ws: {state}
-      {detail ? ` (${detail})` : ""}
+      {label}: {state}
     </span>
   );
 }

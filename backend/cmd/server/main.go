@@ -16,6 +16,7 @@ import (
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/db"
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/handler"
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/hub"
+	"github.com/KazukiKandaKK/webgrapgh/backend/internal/logs"
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/metrics"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
@@ -46,7 +47,13 @@ func main() {
 		log.Fatalf("seed: %v", err)
 	}
 
-	h := hub.New()
+	metricHub := hub.New()
+	logHub := hub.New()
+
+	// In-memory log store, pre-seeded so /api/logs/history is non-empty on boot.
+	logStore := logs.NewStore(30000)
+	logs.SeedHistory(logStore, time.Hour, 5000)
+	log.Printf("logs: seeded %d events (capacity=%d)", logStore.Size(), logStore.Capacity())
 
 	e := echo.New()
 	e.HideBanner = true
@@ -59,9 +66,12 @@ func main() {
 
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	e.GET("/api/history", handler.History(pool))
-	e.GET("/ws", handler.WebSocket(h, cfg.AllowedOrigins))
+	e.GET("/api/logs/history", handler.LogsHistory(logStore))
+	e.GET("/ws", handler.WebSocket(metricHub, cfg.AllowedOrigins))
+	e.GET("/ws/logs", handler.WebSocket(logHub, cfg.AllowedOrigins))
 
-	go runBroadcaster(ctx, h, pool, cfg.PushHz)
+	go runBroadcaster(ctx, metricHub, pool, cfg.PushHz)
+	go runLogBroadcaster(ctx, logHub, logStore, cfg.LogPushHz)
 
 	addr := fmt.Sprintf(":%d", cfg.BackendPort)
 	go func() {
@@ -137,6 +147,32 @@ func persistWorker(ctx context.Context, pool *pgxpool.Pool, jobs <-chan persistJ
 				return
 			}
 			db.InsertSample(ctx, pool, j.ts, j.name, j.value)
+		}
+	}
+}
+
+// runLogBroadcaster emits synthetic log events at LogPushHz, stores them in
+// the in-memory ring, and fans them out to /ws/logs subscribers.
+func runLogBroadcaster(ctx context.Context, h *hub.Hub, store *logs.Store, hz int) {
+	if hz < 1 {
+		hz = 1
+	}
+	interval := time.Second / time.Duration(hz)
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+
+	gen := logs.NewGenerator()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-tick.C:
+			ev := store.Append(gen.Next(now))
+			payload, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			h.Broadcast(payload)
 		}
 	}
 }

@@ -2,11 +2,10 @@
 
 import dynamic from "next/dynamic";
 
-// The dashboard owns a Web Worker and uPlot — both require `window`. We load
-// it client-side only. This file exists purely so `ssr:false` can live inside
-// a client boundary (Next.js 14 disallows ssr:false in server components).
-const DashboardGrid = dynamic(
-  () => import("./DashboardGrid").then((m) => m.DashboardGrid),
+// The dashboard owns a Web Worker, uPlot, and the virtualizer — all require
+// `window`. We load it client-side only.
+const Dashboard = dynamic(
+  () => import("./Dashboard").then((m) => m.Dashboard),
   {
     ssr: false,
     loading: () => (
@@ -16,5 +15,5 @@ const DashboardGrid = dynamic(
 );
 
 export default function DashboardClient() {
-  return <DashboardGrid />;
+  return <Dashboard />;
 }

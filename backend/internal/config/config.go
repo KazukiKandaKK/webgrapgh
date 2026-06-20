@@ -17,6 +17,7 @@ type Config struct {
 	BackendPort          int
 	SeedPointsPerMetric  int
 	PushHz               int
+	LogPushHz            int
 	AllowedOrigins       []string
 }
 
@@ -30,6 +31,7 @@ func Load() Config {
 		BackendPort:         getEnvInt("BACKEND_PORT", 8080),
 		SeedPointsPerMetric: getEnvInt("SEED_POINTS_PER_METRIC", 20000),
 		PushHz:              getEnvInt("PUSH_HZ", 20),
+		LogPushHz:           getEnvInt("LOG_PUSH_HZ", 30),
 		AllowedOrigins:      splitCSV(getEnv("ALLOWED_ORIGINS", "http://localhost:3000")),
 	}
 }
