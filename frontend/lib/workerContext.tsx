@@ -26,10 +26,14 @@ export function WorkerProvider({ children }: { children: React.ReactNode }) {
       wsLogsUrl,
       metrics: METRICS,
       bufferSize: 5000,
-      maxRenderPoints: 2000,
+      // 1000 is enough for 1080p — eyes can't see more, and it halves the
+      // bytes we push through postMessage per flush.
+      maxRenderPoints: 1000,
       flushHz: 30,
       logBufferSize: 30000,
-      logTotalHz: 5,
+      // 2Hz means LogTable re-renders 2×/sec instead of 5×/sec while the
+      // virtualizer's row count stays accurate enough for the eye.
+      logTotalHz: 2,
     });
     setController(c);
     return () => c.stop();

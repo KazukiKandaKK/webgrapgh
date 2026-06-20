@@ -358,6 +358,13 @@ function startFlushLoops() {
   state.logFlushTimer = self.setInterval(flushLogTotal, state.logTotalIntervalMs) as unknown as number;
 }
 
+// Reused across every flushFrame call so we don't generate a fresh object +
+// array per tick. The {t, v} slot objects inside are still allocated per
+// metric per flush — small + nursery-friendly — but the outer container
+// churn is eliminated.
+const reusablePayload: Record<string, { t: Float64Array; v: Float64Array }> = {};
+const reusableTransfers: ArrayBuffer[] = [];
+
 /**
  * Drain ring buffers into chronological Float64Arrays, optionally restricted
  * to the visible time window, downsample by stride, and ship to the main
@@ -368,8 +375,13 @@ function flushFrame() {
   state.frameDirty = false;
 
   const windowMs = state.windowMs;
-  const payload: Record<string, { t: Float64Array; v: Float64Array }> = {};
-  const transfers: ArrayBuffer[] = [];
+  // Reset reused containers. Property delete on a small object is cheap and
+  // V8 keeps the hidden class stable as long as we always touch the same
+  // metric keys (which we do).
+  for (const k in reusablePayload) delete reusablePayload[k];
+  reusableTransfers.length = 0;
+  const payload = reusablePayload;
+  const transfers = reusableTransfers;
 
   for (const name of state.metrics) {
     const buf = state.buffers.get(name);
