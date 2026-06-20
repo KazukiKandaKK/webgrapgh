@@ -54,36 +54,30 @@
 
 ## セットアップ
 
-### 1. 環境変数
+### 全部 Docker で立ち上げる (推奨)
 
 ```bash
 cp .env.example .env
+docker compose up --build -d
+# postgres :5432 / backend :8080 / frontend :3000
 ```
 
-### 2. PostgreSQL
+- 初回起動時に backend が過去 1 時間分のダミーデータ (`SEED_POINTS_PER_METRIC` 件/メトリクス) を PG に投入します。
+- ブラウザで `http://localhost:3000` を開くと、履歴 1h を初期描画 → WS 接続 → リアルタイム更新に切り替わります。
+- `NEXT_PUBLIC_*` はビルド時に bundle に焼き込まれるため、ホスト名やポートを変えた場合は `docker compose build frontend` で再ビルドが必要です。
+
+### ローカル開発で個別に動かす
+
+PG だけ Docker で立て、backend / frontend はホストで実行:
 
 ```bash
-docker compose up -d
-```
+docker compose up -d postgres
 
-### 3. バックエンド
+cd backend && go mod tidy && go run ./cmd/server
+# → :8080
 
-```bash
-cd backend
-go mod tidy
-go run ./cmd/server
-# → http://localhost:8080  (REST: /api/history, WS: /ws)
-```
-
-初回起動時に過去1時間分のシードデータ (`SEED_POINTS_PER_METRIC` 件/メトリクス) を投入します。
-
-### 4. フロントエンド
-
-```bash
-cd frontend
-npm install
-npm run dev
-# → http://localhost:3000
+cd frontend && npm install && npm run dev
+# → :3000
 ```
 
 ## エンドポイント

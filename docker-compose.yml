@@ -17,5 +17,46 @@ services:
       timeout: 3s
       retries: 10
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: webgraph-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the DB is reachable by its service name.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgraph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgraph}
+      POSTGRES_DB: ${POSTGRES_DB:-webgraph}
+      BACKEND_PORT: 8080
+      SEED_POINTS_PER_METRIC: ${SEED_POINTS_PER_METRIC:-20000}
+      PUSH_HZ: ${PUSH_HZ:-20}
+      # The browser (not the container) opens the WS, so the origin it sends
+      # is the host-exposed origin of the frontend service.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Compiled into the JS bundle that ships to the browser. These point at
+        # the host-exposed backend port — the browser cannot reach `backend:8080`.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8080/ws}
+    container_name: webgraph-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
 volumes:
   webgraph_pgdata:

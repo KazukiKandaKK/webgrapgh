@@ -1,0 +1,9 @@
+Dockerfile
+.dockerignore
+*.test
+server
+tmp/
+.git
+.env
+.env.*
+README.md
