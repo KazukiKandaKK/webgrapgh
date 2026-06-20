@@ -32,24 +32,34 @@ func (g *Generator) Next(now time.Time, names []string) Sample {
 		if v < 0 {
 			v = 0
 		}
-		if v > 100 {
-			v = 100
-		}
 		out[name] = v
 	}
 	return Sample{TimeMs: now.UnixMilli(), Values: out}
 }
 
+// shape mirrors db.metricShape — kept in sync so live samples align with seed.
 func shape(name string) (base, amp, period float64) {
 	switch name {
 	case "cpu":
 		return 45, 25, 180
 	case "memory":
 		return 62, 8, 600
-	case "network":
-		return 30, 28, 90
 	case "disk":
 		return 70, 5, 1200
+	case "gpu":
+		return 50, 30, 240
+	case "network":
+		return 30, 28, 90
+	case "requests":
+		return 120, 60, 75
+	case "errors":
+		return 1.5, 1.4, 200
+	case "latency_p50":
+		return 50, 30, 120
+	case "latency_p99":
+		return 250, 150, 300
+	case "queue":
+		return 400, 350, 480
 	}
 	return 50, 10, 300
 }

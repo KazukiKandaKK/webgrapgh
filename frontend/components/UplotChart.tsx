@@ -44,9 +44,10 @@ export const UplotChart = forwardRef<UplotChartHandle, Props>(function UplotChar
       scales: {
         x: { time: true },
         y: {
-          range: () => [
-            yRange[0] === null ? 0 : yRange[0],
-            yRange[1] === null ? 100 : yRange[1],
+          // For each bound, `null` falls back to uPlot's auto-fit value.
+          range: (_u, dataMin, dataMax) => [
+            yRange[0] !== null ? yRange[0] : dataMin,
+            yRange[1] !== null ? yRange[1] : dataMax,
           ],
         },
       },

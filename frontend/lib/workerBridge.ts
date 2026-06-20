@@ -44,6 +44,8 @@ export type WorkerController = {
   stop: () => void;
   /** Ask the worker for a slice of the log ring. */
   requestLogs: (requestId: number, offset: number, limit: number) => void;
+  /** Restrict chart frames to the last `windowMs`. null = unfiltered. */
+  setRange: (windowMs: number | null) => void;
   onFrame: (h: FrameHandler) => () => void;
   onStatus: (h: StatusHandler) => () => void;
   onLogTotal: (h: LogTotalHandler) => () => void;
@@ -105,6 +107,9 @@ export function startWorker(opts: StartOptions): WorkerController {
         offset,
         limit,
       } satisfies MainToWorker);
+    },
+    setRange(windowMs) {
+      worker.postMessage({ type: "setRange", windowMs } satisfies MainToWorker);
     },
     onFrame(h) {
       frameHandlers.add(h);

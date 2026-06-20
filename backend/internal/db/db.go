@@ -15,8 +15,13 @@ import (
 //go:embed schema.sql
 var schemaSQL string
 
-// MetricNames is the canonical ordered list of dummy metrics produced by the system.
-var MetricNames = []string{"cpu", "memory", "network", "disk"}
+// MetricNames is the canonical ordered list of dummy metrics produced by the
+// system. Add new entries at the end so existing dashboards keep their layout.
+var MetricNames = []string{
+	"cpu", "memory", "disk", "network",
+	"gpu", "requests", "errors",
+	"latency_p50", "latency_p99", "queue",
+}
 
 func Connect(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(dsn)
@@ -114,22 +119,32 @@ func Bulk(ctx context.Context, pool *pgxpool.Pool, opts BulkOptions) (int64, err
 	return total, nil
 }
 
-// SeedIfEmpty inserts `perMetric` synthetic points spread evenly across the
-// last hour for each metric name, but only when the metrics table is empty.
-// Intended for the on-boot auto-seed path; use Bulk directly for large loads.
+// SeedIfEmpty inserts `perMetric` synthetic points across the last hour for
+// every metric that has zero rows. Existing metrics are left alone, so new
+// metric names can be added without wiping the volume.
 func SeedIfEmpty(ctx context.Context, pool *pgxpool.Pool, perMetric int) error {
-	var count int64
-	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM metrics`).Scan(&count); err != nil {
-		return fmt.Errorf("count: %w", err)
+	needed := make([]string, 0, len(MetricNames))
+	for _, name := range MetricNames {
+		var exists bool
+		err := pool.QueryRow(ctx,
+			`SELECT EXISTS(SELECT 1 FROM metrics WHERE metric_name = $1 LIMIT 1)`,
+			name,
+		).Scan(&exists)
+		if err != nil {
+			return fmt.Errorf("seed check %s: %w", name, err)
+		}
+		if !exists {
+			needed = append(needed, name)
+		}
 	}
-	if count > 0 {
-		log.Printf("seed: skipping, %d rows already present", count)
+	if len(needed) == 0 {
+		log.Printf("seed: skipping, all %d metrics already populated", len(MetricNames))
 		return nil
 	}
-	log.Printf("seed: inserting %d points per metric (%d total)…", perMetric, perMetric*len(MetricNames))
+	log.Printf("seed: inserting %d points × %d metrics (%v)…", perMetric, len(needed), needed)
 	end := time.Now()
 	if _, err := Bulk(ctx, pool, BulkOptions{
-		Names:     MetricNames,
+		Names:     needed,
 		Start:     end.Add(-time.Hour),
 		End:       end,
 		PerMetric: perMetric,
@@ -162,14 +177,30 @@ func (c *copyRowsSrc) Err() error             { return nil }
 
 func metricShape(name string) (base, amp, period float64) {
 	switch name {
+	// 0–100 percentage-ish gauges
 	case "cpu":
 		return 45, 25, 180
 	case "memory":
 		return 62, 8, 600
-	case "network":
-		return 30, 28, 90
 	case "disk":
 		return 70, 5, 1200
+	case "gpu":
+		return 50, 30, 240
+	// Throughput / counts
+	case "network":
+		return 30, 28, 90
+	case "requests":
+		return 120, 60, 75
+	case "errors":
+		return 1.5, 1.4, 200
+	// Latencies (ms)
+	case "latency_p50":
+		return 50, 30, 120
+	case "latency_p99":
+		return 250, 150, 300
+	// Queue depth
+	case "queue":
+		return 400, 350, 480
 	}
 	return 50, 10, 300
 }
@@ -179,9 +210,6 @@ func syntheticValue(base, amp, period float64, t time.Time, rng *rand.Rand) floa
 	v := base + amp*math.Sin(x*2*math.Pi) + (rng.Float64()-0.5)*amp*0.4
 	if v < 0 {
 		v = 0
-	}
-	if v > 100 {
-		v = 100
 	}
 	return v
 }

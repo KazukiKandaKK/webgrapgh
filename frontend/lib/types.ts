@@ -1,7 +1,18 @@
 // Shared message types between the main thread and the data Worker.
 // Kept dependency-free so it can be imported from both sides.
 
-export const METRICS = ["cpu", "memory", "network", "disk"] as const;
+export const METRICS = [
+  "cpu",
+  "memory",
+  "disk",
+  "network",
+  "gpu",
+  "requests",
+  "errors",
+  "latency_p50",
+  "latency_p99",
+  "queue",
+] as const;
 export type MetricName = (typeof METRICS)[number];
 
 /** REST /api/history response shape. */
@@ -45,7 +56,13 @@ export type MainToWorker =
       logTotalHz: number;
     }
   | { type: "stop" }
-  | { type: "getLogs"; requestId: number; offset: number; limit: number };
+  | { type: "getLogs"; requestId: number; offset: number; limit: number }
+  /**
+   * Set the visible time window for chart frames. `null` removes the filter
+   * (show every point in the worker buffer). When set, the worker keeps only
+   * points with `t >= newest - windowMs` on each flush.
+   */
+  | { type: "setRange"; windowMs: number | null };
 
 // ---------- worker → main thread ----------
 

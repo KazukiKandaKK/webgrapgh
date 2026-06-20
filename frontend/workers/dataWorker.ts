@@ -76,6 +76,8 @@ type State = {
   wsUrl: string;
   wsLogsUrl: string;
   stopped: boolean;
+  /** Visible time window (ms). null = unfiltered (use entire ring buffer). */
+  windowMs: number | null;
 };
 
 const state: State = {
@@ -98,6 +100,7 @@ const state: State = {
   wsUrl: "",
   wsLogsUrl: "",
   stopped: false,
+  windowMs: null,
 };
 
 self.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
@@ -111,6 +114,10 @@ self.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       return;
     case "getLogs":
       handleGetLogs(msg.requestId, msg.offset, msg.limit);
+      return;
+    case "setRange":
+      state.windowMs = msg.windowMs;
+      state.frameDirty = true; // force the next flush to re-render
       return;
   }
 });
@@ -348,13 +355,15 @@ function startFlushLoops() {
 }
 
 /**
- * Drain ring buffers into chronological Float64Arrays, downsample by stride
- * if necessary, and ship them to the main thread via transferable buffers.
+ * Drain ring buffers into chronological Float64Arrays, optionally restricted
+ * to the visible time window, downsample by stride, and ship to the main
+ * thread via transferable buffers.
  */
 function flushFrame() {
   if (!state.frameDirty) return;
   state.frameDirty = false;
 
+  const windowMs = state.windowMs;
   const payload: Record<string, { t: Float64Array; v: Float64Array }> = {};
   const transfers: ArrayBuffer[] = [];
 
@@ -362,16 +371,35 @@ function flushFrame() {
     const buf = state.buffers.get(name);
     if (!buf || buf.size === 0) continue;
 
-    const stride = Math.max(1, Math.ceil(buf.size / state.maxRenderPoints));
-    const outLen = Math.ceil(buf.size / stride);
+    const cap = buf.t.length;
+    const startIdx = buf.size < cap ? 0 : buf.head;
+
+    // Find the first offset within the desired window.
+    let startOffset = 0;
+    if (windowMs !== null) {
+      const newestReadIdx = (startIdx + buf.size - 1 + cap) % cap;
+      const cutoff = buf.t[newestReadIdx] - windowMs;
+      startOffset = buf.size;
+      for (let i = 0; i < buf.size; i++) {
+        const readIdx = (startIdx + i) % cap;
+        if (buf.t[readIdx] >= cutoff) {
+          startOffset = i;
+          break;
+        }
+      }
+    }
+
+    const sliceSize = buf.size - startOffset;
+    if (sliceSize <= 0) continue;
+
+    const stride = Math.max(1, Math.ceil(sliceSize / state.maxRenderPoints));
+    const outLen = Math.ceil(sliceSize / stride);
     const t = new Float64Array(outLen);
     const v = new Float64Array(outLen);
 
-    const cap = buf.t.length;
-    const startIdx = buf.size < cap ? 0 : buf.head;
     let writeIdx = 0;
-    for (let i = 0; i < buf.size; i += stride) {
-      const readIdx = (startIdx + i) % cap;
+    for (let i = 0; i < sliceSize; i += stride) {
+      const readIdx = (startIdx + startOffset + i) % cap;
       t[writeIdx] = buf.t[readIdx] / 1000;
       v[writeIdx] = buf.v[readIdx];
       writeIdx++;
