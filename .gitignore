@@ -1,0 +1,26 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+*.log
+.npm
+*.tsbuildinfo
+
+# Go
+backend/server
+backend/tmp/
+backend/*.test
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.local.example
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

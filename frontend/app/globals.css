@@ -1,0 +1,24 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* uPlot stylesheet — Canvas itself draws the data, but axis/legend rely on CSS */
+@import "uplot/dist/uPlot.min.css";
+
+html,
+body {
+  background: #020617;
+  color: #e2e8f0;
+}
+
+/* Tweak uPlot defaults to fit the dark theme */
+.uplot,
+.uplot * {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.u-legend {
+  color: #cbd5e1;
+}
+.u-axis {
+  color: #94a3b8;
+}
