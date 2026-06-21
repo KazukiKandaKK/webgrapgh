@@ -73,10 +73,22 @@ export function startWorker(opts: StartOptions): WorkerController {
   const sabFramePayload: Record<string, Slot> = {};
   const sabFrameSlots = new Map<MetricName, Slot>();
 
+  let sabInitSeen = false;
+  let firstFrameSeen = false;
+
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {
     const msg = ev.data;
     switch (msg.type) {
       case "frame":
+        if (!firstFrameSeen) {
+          firstFrameSeen = true;
+          // eslint-disable-next-line no-console
+          console.info(
+            `[bridge] first frame (transfer path), ${
+              Object.keys(msg.metrics).length
+            } metrics, ${frameHandlers.size} handler(s)`
+          );
+        }
         frameHandlers.forEach((h) => h(msg.metrics));
         return;
       case "sabInit":
@@ -94,6 +106,11 @@ export function startWorker(opts: StartOptions): WorkerController {
             v: new Float64Array(0),
           });
         }
+        sabInitSeen = true;
+        // eslint-disable-next-line no-console
+        console.info(
+          `[bridge] sabInit received (${sabViews.size} metrics)`
+        );
         return;
       case "sabTick": {
         const useA = (msg.gen & 1) === 1;
@@ -104,11 +121,18 @@ export function startWorker(opts: StartOptions): WorkerController {
           if (!views || !slot) continue;
           const tFull = useA ? views.tA : views.tB;
           const vFull = useA ? views.vA : views.vB;
-          // subarray() shares the backing SAB — no copy, no allocation of
-          // the underlying memory; just a tiny Float64Array wrapper.
           slot.t = tFull.subarray(0, size);
           slot.v = vFull.subarray(0, size);
           sabFramePayload[name] = slot;
+        }
+        if (!firstFrameSeen) {
+          firstFrameSeen = true;
+          // eslint-disable-next-line no-console
+          console.info(
+            `[bridge] first sabTick (gen=${msg.gen}, ${
+              Object.keys(sabFramePayload).length
+            } metrics, ${frameHandlers.size} handler(s))`
+          );
         }
         frameHandlers.forEach((h) =>
           h(sabFramePayload as Record<MetricName, { t: Float64Array; v: Float64Array }>)
@@ -159,6 +183,13 @@ export function startWorker(opts: StartOptions): WorkerController {
     },
     onFrame(h) {
       frameHandlers.add(h);
+      // eslint-disable-next-line no-console
+      console.info(
+        `[bridge] onFrame subscribed (total=${frameHandlers.size}, sabInitSeen=${sabInitSeen})`
+      );
+      // Defeat the race where the worker fired its first sabTick before this
+      // handler was attached — kick the worker so it re-flushes on the next tick.
+      worker.postMessage({ type: "kick" } satisfies MainToWorker);
       return () => {
         frameHandlers.delete(h);
       };

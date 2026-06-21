@@ -57,6 +57,9 @@ export type MainToWorker =
     }
   | { type: "stop" }
   | { type: "getLogs"; requestId: number; offset: number; limit: number }
+  /** Force the next flush even if no new data arrived — used by the bridge
+   *  when a new frame subscriber registers so the chart can paint immediately. */
+  | { type: "kick" }
   /**
    * Set the visible time window for chart frames. `null` removes the filter
    * (show every point in the worker buffer). When set, the worker keeps only

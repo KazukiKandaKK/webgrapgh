@@ -57,7 +57,20 @@ export function DashboardGrid() {
 
   // Subscribe to worker frames (imperative fan-out — no React rerenders).
   useEffect(() => {
+    let firstFrameLogged = false;
     const offFrame = controller.onFrame((metrics) => {
+      if (!firstFrameLogged) {
+        firstFrameLogged = true;
+        const refsReady = METRICS.filter((m) => chartRefs.current[m] !== null).length;
+        const firstMetric = METRICS.find((m) => metrics[m]);
+        const sample = firstMetric ? metrics[firstMetric] : undefined;
+        // eslint-disable-next-line no-console
+        console.info(
+          `[grid] first onFrame: ${Object.keys(metrics).length} metrics, ` +
+            `${refsReady}/${METRICS.length} chart refs ready, ` +
+            `sample ${firstMetric}: ${sample?.t.length ?? 0} pts`
+        );
+      }
       for (const name of METRICS) {
         const series = metrics[name];
         if (!series) continue;

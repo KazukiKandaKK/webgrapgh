@@ -133,6 +133,10 @@ self.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       state.windowMs = msg.windowMs;
       state.frameDirty = true; // force the next flush to re-render
       return;
+    case "kick":
+      // A new subscriber appeared on main; refresh charts on next tick.
+      state.frameDirty = true;
+      return;
   }
 });
 

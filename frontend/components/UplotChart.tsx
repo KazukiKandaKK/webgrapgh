@@ -87,18 +87,28 @@ export const UplotChart = forwardRef<UplotChartHandle, Props>(function UplotChar
     };
   }, [title, color, height, yRange]);
 
+  const firstSetDataRef = useRef(true);
   useImperativeHandle(ref, () => ({
     setData(t, v) {
       const plot = plotRef.current;
-      if (!plot) return;
+      if (!plot) {
+        if (firstSetDataRef.current) {
+          // eslint-disable-next-line no-console
+          console.warn(`[uplot:${title}] setData called before plot ready (n=${t.length})`);
+        }
+        return;
+      }
+      if (firstSetDataRef.current) {
+        firstSetDataRef.current = false;
+        // eslint-disable-next-line no-console
+        console.info(`[uplot:${title}] first setData: ${t.length} pts`);
+      }
       // uPlot expects `AlignedData = [xs, ys, ys, ...]`. We hand it the
       // Float64Arrays straight from the Worker — no allocation, no copy.
       dataRef.current = [t, v];
-      // `false` skips re-fitting the y-scale on every frame; that's already
-      // covered by the static `range` we configured above.
       plot.setData(dataRef.current, false);
     },
-  }), []);
+  }), [title]);
 
   return <div ref={containerRef} className="w-full" style={{ height }} />;
 });
