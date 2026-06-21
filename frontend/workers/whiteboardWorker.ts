@@ -128,27 +128,33 @@ function initialize(wsUrl: string, room: string) {
   });
   provider.on("connection-error", () => postStatus("error"));
 
-  // Seed shapes after sync — but only if the doc is still empty AND this
-  // peer was the first to connect. Using `synced` ensures we don't race
-  // against incoming state-step-2 messages and produce duplicate seeds.
-  provider.once("sync", (isSynced: boolean) => {
-    if (!isSynced) return;
-    if (shapes.size > 0) {
-      packAndPost();
-      return;
+  // Push an empty frame straight away so the canvas knows it can start its
+  // rAF loop and paint the background grid even before shapes exist.
+  packAndPost();
+
+  // Seed shapes after a short delay so any incoming state from peers that
+  // joined earlier has time to land. We do NOT use `provider.once('sync')`
+  // because the Go server is a dumb relay — if this is the FIRST peer, no
+  // sync-step-2 ever arrives and the event never fires. The per-key
+  // `.has()` guard below keeps later joiners from clobbering moves that
+  // earlier peers have already made.
+  self.setTimeout(seedIfMissing, 500);
+}
+
+function seedIfMissing() {
+  const seeds: { id: string; shape: Shape }[] = [
+    { id: "s-1", shape: { x: 120, y: 100, w: 140, h: 90, color: "#38bdf8" } },
+    { id: "s-2", shape: { x: 320, y: 160, w: 120, h: 120, color: "#a78bfa" } },
+    { id: "s-3", shape: { x: 540, y: 80, w: 160, h: 80, color: "#facc15" } },
+    { id: "s-4", shape: { x: 240, y: 320, w: 180, h: 100, color: "#34d399" } },
+  ];
+  // Only set keys that don't already exist — joining peers must not
+  // overwrite moves made before they connected.
+  doc.transact(() => {
+    for (const { id, shape } of seeds) {
+      if (!shapes.has(id)) shapes.set(id, shape);
     }
-    doc.transact(() => {
-      const seeds: { id: string; shape: Shape }[] = [
-        { id: "s-1", shape: { x: 120, y: 100, w: 140, h: 90, color: "#38bdf8" } },
-        { id: "s-2", shape: { x: 320, y: 160, w: 120, h: 120, color: "#a78bfa" } },
-        { id: "s-3", shape: { x: 540, y: 80, w: 160, h: 80, color: "#facc15" } },
-        { id: "s-4", shape: { x: 240, y: 320, w: 180, h: 100, color: "#34d399" } },
-      ];
-      for (const { id, shape } of seeds) {
-        shapes.set(id, shape);
-      }
-    }, "seed");
-  });
+  }, "seed");
 }
 
 // ---------- Message dispatch ----------

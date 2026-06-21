@@ -53,15 +53,23 @@ export function CanvasBoard() {
     );
     workerRef.current = worker;
 
+    let firstFrameLogged = false;
     worker.onmessage = (ev: MessageEvent<WhiteboardWorkerToMain>) => {
       const msg = ev.data;
       if (msg.type === "frame") {
+        if (!firstFrameLogged) {
+          firstFrameLogged = true;
+          // eslint-disable-next-line no-console
+          console.info(`[whiteboard] first frame: ${msg.ids.length} shapes`);
+        }
         applyFrame(msg);
         scheduleDraw();
         setShapeCount(msg.ids.length);
         return;
       }
       if (msg.type === "status") {
+        // eslint-disable-next-line no-console
+        console.info(`[whiteboard] status: ${msg.state}`);
         setStatus(msg.state);
         return;
       }
@@ -274,6 +282,7 @@ export function CanvasBoard() {
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseLeave}
         className="w-full flex-1 cursor-crosshair rounded-lg border border-slate-800"
+        style={{ minHeight: 480 }}
       />
     </div>
   );
