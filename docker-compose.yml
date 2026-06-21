@@ -88,6 +88,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-webgraph}
     entrypoint: ["/app/seed"]
 
+  # Default: Next.js (React) frontend. To swap to the SolidJS rewrite, stop
+  # this and start `frontend-solid` (profile: ["solid"]).
   frontend:
     build:
       context: ./frontend
@@ -98,6 +100,27 @@ services:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
         NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8080/ws}
     container_name: webgraph-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+  # SolidJS rewrite. Opt-in via `--profile solid`. Bring it up like:
+  #   docker compose stop frontend
+  #   docker compose --profile solid up -d frontend-solid
+  # Shares the same wire format with the backend — no server change needed.
+  frontend-solid:
+    build:
+      context: ./frontend-solid
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
+        VITE_WS_LOGS_URL: ${VITE_WS_LOGS_URL:-ws://localhost:8080/ws/logs}
+    image: webgrapgh-frontend-solid
+    container_name: webgraph-frontend-solid
+    profiles: ["solid"]
     restart: unless-stopped
     depends_on:
       - backend
