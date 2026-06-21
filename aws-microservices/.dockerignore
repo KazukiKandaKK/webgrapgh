@@ -1,0 +1,8 @@
+Dockerfile
+.dockerignore
+cdk/
+scripts/
+*.md
+.git
+.env
+.env.*

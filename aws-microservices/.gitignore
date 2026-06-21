@@ -1,0 +1,8 @@
+# Local stacked state
+.localstack/
+*.log
+
+# Built binaries at repo root (not in services/)
+/bff
+/metrics
+/logs

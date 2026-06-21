@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package metrics;
+
+option go_package = "github.com/KazukiKandaKK/webgrapgh/aws-microservices/proto/metrics;metricspb";
+
+// Tick is one snapshot of every requested metric at a single instant.
+// Using a map keeps the wire format identical to the monolith's WireSample
+// JSON shape ({t, v:{cpu:..., memory:...}}) so the BFF can pass it through
+// with only a JSON serialization step.
+message Tick {
+  int64 timestamp_ms = 1;
+  map<string, double> values = 2;
+}
+
+message StreamRequest {
+  // Subset of metric names to stream. Empty = all known metrics.
+  repeated string metric_names = 1;
+}
+
+message HistoryRequest {
+  repeated string metric_names = 1;
+  // Inclusive lower bound of the time range (Unix ms).
+  int64 from_timestamp_ms = 2;
+  // Exclusive upper bound. 0 means "now".
+  int64 to_timestamp_ms = 3;
+  // Maximum points to return per metric (server-side downsample target).
+  // 0 means no downsample.
+  int32 max_points = 4;
+}
+
+service MetricsService {
+  // Server stream: a fresh Tick every PUSH_HZ ticks per second.
+  rpc StreamRealtime(StreamRequest) returns (stream Tick);
+  // Server stream: historical Ticks, oldest first, then EOF.
+  rpc GetHistory(HistoryRequest) returns (stream Tick);
+}
