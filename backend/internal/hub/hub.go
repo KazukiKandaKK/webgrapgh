@@ -70,6 +70,30 @@ func (h *Hub) Broadcast(payload []byte) {
 	}
 }
 
+// BroadcastExcept is identical to Broadcast except the `sender` client is
+// skipped. Used by the Yjs/CRDT relay where echoing an update back to its
+// originator would either be ignored (best case) or trip duplicate-state
+// detection in the client (worst case).
+func (h *Hub) BroadcastExcept(payload []byte, sender *Client) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.clients))
+	for c := range h.clients {
+		if c == sender {
+			continue
+		}
+		clients = append(clients, c)
+	}
+	h.mu.RUnlock()
+
+	for _, c := range clients {
+		select {
+		case c.send <- payload:
+		default:
+			h.Unregister(c)
+		}
+	}
+}
+
 func (h *Hub) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

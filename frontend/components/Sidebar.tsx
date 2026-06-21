@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -39,6 +40,20 @@ export function Sidebar({ metrics }: Props) {
               {m}
             </li>
           ))}
+        </ul>
+
+        <div className="mb-2 mt-6 text-xs uppercase tracking-widest text-slate-500">
+          Tools
+        </div>
+        <ul className="space-y-1">
+          <li>
+            <Link
+              href="/whiteboard"
+              className="block rounded px-2 py-1 text-sm text-sky-300 hover:bg-slate-800"
+            >
+              ✏️ whiteboard (CRDT)
+            </Link>
+          </li>
         </ul>
       </nav>
 

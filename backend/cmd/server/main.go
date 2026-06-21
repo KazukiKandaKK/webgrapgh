@@ -53,6 +53,7 @@ func main() {
 
 	metricHub := hub.New()
 	logHub := hub.New()
+	canvasHub := hub.New()
 
 	logStore := logs.NewStore(30000)
 	logs.SeedHistory(logStore, time.Hour, 5000)
@@ -72,6 +73,14 @@ func main() {
 	e.GET("/api/logs/history", handler.LogsHistory(logStore))
 	e.GET("/ws", handler.WebSocket(metricHub, cfg.AllowedOrigins))
 	e.GET("/ws/logs", handler.WebSocket(logHub, cfg.AllowedOrigins))
+	// Yjs CRDT relay for the whiteboard. Server is stateless — peers sync
+	// each other via the y-websocket protocol; we only fan out binary frames.
+	// y-websocket appends the room name as a path segment (/ws/canvas/<room>),
+	// so we register both the bare path and the parameterized one. Today the
+	// hub is global; the room param is accepted but ignored.
+	canvasH := handler.CanvasWebSocket(canvasHub, cfg.AllowedOrigins)
+	e.GET("/ws/canvas", canvasH)
+	e.GET("/ws/canvas/:room", canvasH)
 
 	// /ws is fed by rows the writer process(es) INSERT into `metrics`.
 	go watcher.Run(ctx, pool, metricHub)
