@@ -1,0 +1,9 @@
+**/node_modules/
+**/.bb-data/
+**/.bb-realtime/
+**/.blocks-sandbox/
+**/dist/
+**/cdk.out/
+**/.cdk.staging/
+*.tsbuildinfo
+*.log
