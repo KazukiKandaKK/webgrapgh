@@ -45,10 +45,17 @@ export const UplotChart = forwardRef<UplotChartHandle, Props>(function UplotChar
         x: { time: true },
         y: {
           // For each bound, `null` falls back to uPlot's auto-fit value.
-          range: (_u, dataMin, dataMax) => [
-            yRange[0] !== null ? yRange[0] : dataMin,
-            yRange[1] !== null ? yRange[1] : dataMax,
-          ],
+          // At init with no data uPlot may pass ±Infinity here; clamp to a
+          // safe range so the scale doesn't go degenerate before setData runs.
+          range: (_u, dataMin, dataMax) => {
+            const lo = yRange[0] !== null
+              ? yRange[0]
+              : Number.isFinite(dataMin) ? dataMin : 0;
+            const hi = yRange[1] !== null
+              ? yRange[1]
+              : Number.isFinite(dataMax) ? dataMax : lo + 1;
+            return [lo, hi];
+          },
         },
       },
       axes: [
@@ -101,12 +108,19 @@ export const UplotChart = forwardRef<UplotChartHandle, Props>(function UplotChar
       if (firstSetDataRef.current) {
         firstSetDataRef.current = false;
         // eslint-disable-next-line no-console
-        console.info(`[uplot:${title}] first setData: ${t.length} pts`);
+        console.info(
+          `[uplot:${title}] first setData: ${t.length} pts ` +
+            `(t=${t[0]?.toFixed(0)}…${t[t.length - 1]?.toFixed(0)}, ` +
+            `v=${v[0]?.toFixed(2)}…${v[v.length - 1]?.toFixed(2)})`
+        );
       }
       // uPlot expects `AlignedData = [xs, ys, ys, ...]`. We hand it the
       // Float64Arrays straight from the Worker — no allocation, no copy.
       dataRef.current = [t, v];
-      plot.setData(dataRef.current, false);
+      // resetScales=true so uPlot recomputes the x extent from the data on
+      // every frame. y is pinned by the explicit `range` callback we set in
+      // the init options, so passing true here doesn't cause y-axis jitter.
+      plot.setData(dataRef.current, true);
     },
   }), [title]);
 
