@@ -3,6 +3,7 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 import type {
+  ShapeRecord,
   WhiteboardFrameMsg,
   WhiteboardMainToWorker,
   WhiteboardStatusMsg,
@@ -13,19 +14,15 @@ declare const self: DedicatedWorkerGlobalScope;
 // ---------- Yjs document ----------
 
 const doc = new Y.Doc();
-// Y.Map<id → { x, y, w, h, color }>. We use plain object values rather than
-// nested Y.Maps — the values are atomic from Yjs' point of view, which is
-// fine for "move shape" semantics (no sub-field concurrent edits).
-type Shape = { x: number; y: number; w: number; h: number; color: string };
-const shapes = doc.getMap<Shape>("shapes");
+const shapes = doc.getMap<ShapeRecord>("shapes");
 
 let provider: WebsocketProvider | null = null;
 
 // ---------- Pending-moves buffer (Backpressure) ----------
 //
-// While the user is dragging, the main thread sends a `move` per
-// requestAnimationFrame (~60Hz). We coalesce them into a single Yjs
-// transaction every 50ms (=20Hz) so the WebSocket sees at most 20 deltas/sec.
+// Drag generates a `move` per rAF (~60Hz). We coalesce them into a single
+// Yjs transaction every 50ms (=20Hz) so the WebSocket sees at most 20
+// deltas/sec.
 const pending = new Map<string, { x: number; y: number }>();
 let flushTimer: number | null = null;
 const FLUSH_INTERVAL_MS = 50;
@@ -42,60 +39,71 @@ function flushPending() {
     for (const [id, pos] of pending) {
       const s = shapes.get(id);
       if (!s) continue;
-      // Re-set the whole record — Y.Map stores values atomically. Mutation
-      // of the captured object would NOT propagate; we must call .set().
+      // Re-set the whole record — Y.Map values are atomic. We must NOT
+      // mutate the captured object (the mutation wouldn't propagate).
       shapes.set(id, { ...s, x: pos.x, y: pos.y });
     }
     pending.clear();
-  }, /* origin */ "local-drag");
+  }, "local-drag");
 }
 
 // ---------- Frame packer (output to main thread) ----------
-//
-// Reusable Float64Array. We grow it when shape count exceeds capacity but
-// otherwise reuse to avoid steady-state allocation.
-let outCoords: Float64Array = new Float64Array(0);
+
+// Reusable scratch buffer. Grown when shape count exceeds capacity; in steady
+// state nothing is allocated per frame on this line.
+let scratchCoords: Float64Array = new Float64Array(0);
+let scratchFonts: Float64Array = new Float64Array(0);
 
 function packAndPost() {
-  // Stable iteration order — Y.Map iteration is insertion-order, which is
-  // fine for our purposes (no z-index reordering yet).
   const ids: string[] = [];
-  const colors: string[] = [];
   shapes.forEach((_v, k) => ids.push(k));
   ids.sort(); // deterministic across peers
 
-  const need = ids.length * 4;
-  if (outCoords.length < need) {
-    outCoords = new Float64Array(need);
+  const n = ids.length;
+  const needCoords = n * 4;
+  if (scratchCoords.length < needCoords) {
+    scratchCoords = new Float64Array(needCoords);
   }
-  for (let i = 0; i < ids.length; i++) {
-    const s = shapes.get(ids[i])!;
-    const o = i * 4;
-    outCoords[o] = s.x;
-    outCoords[o + 1] = s.y;
-    outCoords[o + 2] = s.w;
-    outCoords[o + 3] = s.h;
-    colors.push(s.color);
+  if (scratchFonts.length < n) {
+    scratchFonts = new Float64Array(n);
   }
 
-  // Take a fresh subarray view of just the valid slots and copy into a new
-  // buffer so we can transfer ownership (subarrays of a SharedArrayBuffer
-  // can't be transferred; for a plain ArrayBuffer, subarray() returns a
-  // view of the SAME buffer which would detach `outCoords` if we transferred).
-  // Cheap: ids.length * 4 floats = small.
-  const out = new Float64Array(need);
-  out.set(outCoords.subarray(0, need));
+  const kinds: ShapeRecord["kind"][] = new Array(n);
+  const colors: string[] = new Array(n);
+  const texts: string[] = new Array(n);
+
+  for (let i = 0; i < n; i++) {
+    const s = shapes.get(ids[i])!;
+    const o = i * 4;
+    scratchCoords[o] = s.x;
+    scratchCoords[o + 1] = s.y;
+    scratchCoords[o + 2] = s.w;
+    scratchCoords[o + 3] = s.h;
+    scratchFonts[i] = s.fontSize;
+    kinds[i] = s.kind;
+    colors[i] = s.color;
+    texts[i] = s.text;
+  }
+
+  // Copy the valid prefix into fresh ArrayBuffers so we can transfer them
+  // (transferring `scratchCoords.buffer` would detach our scratch, defeating
+  // the reuse). The copies are tiny — needCoords floats × 8 bytes.
+  const coords = new Float64Array(needCoords);
+  coords.set(scratchCoords.subarray(0, needCoords));
+  const fontSizes = new Float64Array(n);
+  fontSizes.set(scratchFonts.subarray(0, n));
 
   const msg: WhiteboardFrameMsg = {
     type: "frame",
     ids,
+    kinds,
     colors,
-    coords: out,
+    texts,
+    fontSizes,
+    coords,
   };
-  self.postMessage(msg, [out.buffer]);
+  self.postMessage(msg, [coords.buffer, fontSizes.buffer]);
 }
-
-// ---------- Observe local + remote changes ----------
 
 shapes.observe(() => {
   packAndPost();
@@ -108,18 +116,36 @@ function postStatus(state: WhiteboardStatusMsg["state"]) {
   self.postMessage(msg);
 }
 
+// ---------- Default content ----------
+
+const DEFAULT_SEEDS: { id: string; shape: ShapeRecord }[] = [
+  {
+    id: "s-rect-1",
+    shape: { kind: "rect", x: 120, y: 100, w: 140, h: 90, color: "#38bdf8", text: "", fontSize: 16 },
+  },
+  {
+    id: "s-rect-2",
+    shape: { kind: "rect", x: 320, y: 160, w: 120, h: 120, color: "#a78bfa", text: "", fontSize: 16 },
+  },
+  {
+    id: "s-text-1",
+    shape: { kind: "text", x: 540, y: 100, w: 220, h: 36, color: "#fbbf24", text: "double-click to edit", fontSize: 18 },
+  },
+];
+
+function seedIfMissing() {
+  doc.transact(() => {
+    for (const { id, shape } of DEFAULT_SEEDS) {
+      if (!shapes.has(id)) shapes.set(id, shape);
+    }
+  }, "seed");
+}
+
 // ---------- Init ----------
 
 function initialize(wsUrl: string, room: string) {
-  if (provider) {
-    return; // idempotent
-  }
-  // y-websocket's WebsocketProvider works inside a worker — it relies on
-  // the global `WebSocket` constructor, which is available in
-  // DedicatedWorkerGlobalScope.
-  provider = new WebsocketProvider(wsUrl, room, doc, {
-    connect: true,
-  });
+  if (provider) return; // idempotent
+  provider = new WebsocketProvider(wsUrl, room, doc, { connect: true });
 
   provider.on("status", (e: { status: string }) => {
     if (e.status === "connected") postStatus("open");
@@ -128,33 +154,15 @@ function initialize(wsUrl: string, room: string) {
   });
   provider.on("connection-error", () => postStatus("error"));
 
-  // Push an empty frame straight away so the canvas knows it can start its
-  // rAF loop and paint the background grid even before shapes exist.
+  // Paint immediately so the canvas can show its grid.
   packAndPost();
 
-  // Seed shapes after a short delay so any incoming state from peers that
-  // joined earlier has time to land. We do NOT use `provider.once('sync')`
-  // because the Go server is a dumb relay — if this is the FIRST peer, no
-  // sync-step-2 ever arrives and the event never fires. The per-key
-  // `.has()` guard below keeps later joiners from clobbering moves that
-  // earlier peers have already made.
+  // Wait briefly for any incoming state from peers that joined earlier
+  // before we seed. The per-key .has() guard inside seedIfMissing prevents
+  // a late joiner from clobbering moves earlier peers already made. We do
+  // NOT use `provider.once('sync')` here — the Go relay is stateless, so
+  // the first peer never sees a sync-step-2 and the event never fires.
   self.setTimeout(seedIfMissing, 500);
-}
-
-function seedIfMissing() {
-  const seeds: { id: string; shape: Shape }[] = [
-    { id: "s-1", shape: { x: 120, y: 100, w: 140, h: 90, color: "#38bdf8" } },
-    { id: "s-2", shape: { x: 320, y: 160, w: 120, h: 120, color: "#a78bfa" } },
-    { id: "s-3", shape: { x: 540, y: 80, w: 160, h: 80, color: "#facc15" } },
-    { id: "s-4", shape: { x: 240, y: 320, w: 180, h: 100, color: "#34d399" } },
-  ];
-  // Only set keys that don't already exist — joining peers must not
-  // overwrite moves made before they connected.
-  doc.transact(() => {
-    for (const { id, shape } of seeds) {
-      if (!shapes.has(id)) shapes.set(id, shape);
-    }
-  }, "seed");
 }
 
 // ---------- Message dispatch ----------
@@ -171,6 +179,35 @@ self.addEventListener("message", (ev: MessageEvent<WhiteboardMainToWorker>) => {
       return;
     case "commit":
       flushPending();
+      return;
+    case "create":
+      doc.transact(() => {
+        shapes.set(msg.id, msg.shape);
+      }, "create");
+      return;
+    case "delete":
+      // Flush any in-flight move for this id first so we don't resurrect it.
+      pending.delete(msg.id);
+      doc.transact(() => {
+        shapes.delete(msg.id);
+      }, "delete");
+      return;
+    case "setText":
+      doc.transact(() => {
+        const s = shapes.get(msg.id);
+        if (!s) return;
+        // Auto-size text shapes to fit their content (loose estimate, lets
+        // the input overlay match the rendered text width).
+        const charW = s.fontSize * 0.6;
+        const w = Math.max(60, Math.ceil(msg.text.length * charW) + 24);
+        const h = Math.max(28, Math.round(s.fontSize * 1.6));
+        shapes.set(msg.id, { ...s, text: msg.text, w, h });
+      }, "setText");
+      return;
+    case "clear":
+      doc.transact(() => {
+        shapes.forEach((_v, k) => shapes.delete(k));
+      }, "clear");
       return;
   }
 });
