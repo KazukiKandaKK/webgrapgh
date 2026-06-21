@@ -17,15 +17,19 @@ import (
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/handler"
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/hub"
 	"github.com/KazukiKandaKK/webgrapgh/backend/internal/logs"
-	"github.com/KazukiKandaKK/webgrapgh/backend/internal/metrics"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/KazukiKandaKK/webgrapgh/backend/internal/watcher"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
+// The server no longer generates samples itself — that's now cmd/writer's job.
+// The server only:
+//   1. serves REST/WS endpoints
+//   2. watches PostgreSQL for new rows (LISTEN metrics_new) and broadcasts
+//      them on /ws
+//   3. generates and broadcasts synthetic log events (in-memory; no DB)
 func main() {
-	// .env is optional — env vars from the shell win.
 	_ = godotenv.Load(".env")
 	_ = godotenv.Load("../.env")
 
@@ -50,7 +54,6 @@ func main() {
 	metricHub := hub.New()
 	logHub := hub.New()
 
-	// In-memory log store, pre-seeded so /api/logs/history is non-empty on boot.
 	logStore := logs.NewStore(30000)
 	logs.SeedHistory(logStore, time.Hour, 5000)
 	log.Printf("logs: seeded %d events (capacity=%d)", logStore.Size(), logStore.Capacity())
@@ -70,7 +73,9 @@ func main() {
 	e.GET("/ws", handler.WebSocket(metricHub, cfg.AllowedOrigins))
 	e.GET("/ws/logs", handler.WebSocket(logHub, cfg.AllowedOrigins))
 
-	go runBroadcaster(ctx, metricHub, pool, cfg.PushHz)
+	// /ws is fed by rows the writer process(es) INSERT into `metrics`.
+	go watcher.Run(ctx, pool, metricHub)
+	// Logs are in-memory only; no DB writer is involved.
 	go runLogBroadcaster(ctx, logHub, logStore, cfg.LogPushHz)
 
 	addr := fmt.Sprintf(":%d", cfg.BackendPort)
@@ -89,66 +94,6 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
 	_ = e.Shutdown(shutdownCtx)
-}
-
-// runBroadcaster generates dummy samples at PushHz, persists them to PG
-// (async, best-effort), and fans them out to every WebSocket client.
-func runBroadcaster(ctx context.Context, h *hub.Hub, pool *pgxpool.Pool, hz int) {
-	if hz < 1 {
-		hz = 1
-	}
-	interval := time.Second / time.Duration(hz)
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-
-	gen := metrics.NewGenerator()
-
-	persistCh := make(chan persistJob, 1024)
-	for i := 0; i < 2; i++ {
-		go persistWorker(ctx, pool, persistCh)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case now := <-tick.C:
-			s := gen.Next(now, db.MetricNames)
-			payload, err := json.Marshal(s)
-			if err != nil {
-				continue
-			}
-			h.Broadcast(payload)
-
-			for name, v := range s.Values {
-				select {
-				case persistCh <- persistJob{ts: now, name: name, value: v}:
-				default:
-					// drop — DB is behind, prefer fresh broadcast over storage
-				}
-			}
-		}
-	}
-}
-
-type persistJob struct {
-	ts    time.Time
-	name  string
-	value float64
-}
-
-func persistWorker(ctx context.Context, pool *pgxpool.Pool, jobs <-chan persistJob) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case j, ok := <-jobs:
-			if !ok {
-				return
-			}
-			db.InsertSample(ctx, pool, j.ts, j.name, j.value)
-		}
-	}
 }
 
 // runLogBroadcaster emits synthetic log events at LogPushHz, stores them in

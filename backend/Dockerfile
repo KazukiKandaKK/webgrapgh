@@ -14,7 +14,8 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seed   ./cmd/seed
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/seed   ./cmd/seed   && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/writer ./cmd/writer
 
 # ---------- runtime stage ----------
 FROM alpine:3.20
@@ -23,5 +24,6 @@ USER app
 WORKDIR /app
 COPY --from=build /out/server /app/server
 COPY --from=build /out/seed   /app/seed
+COPY --from=build /out/writer /app/writer
 EXPOSE 8080
 ENTRYPOINT ["/app/server"]

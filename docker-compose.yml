@@ -42,6 +42,29 @@ services:
     ports:
       - "${BACKEND_PORT:-8080}:8080"
 
+  # Independent data producer. Inserts one row per metric per tick into PG and
+  # issues NOTIFY metrics_new; the server's watcher LISTENs and broadcasts.
+  # Decoupled from the WebSocket layer: scaling writers up doesn't require any
+  # server changes (the watcher picks up every NEW row regardless of origin).
+  writer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: webgrapgh-backend
+    container_name: webgraph-writer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgraph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgraph}
+      POSTGRES_DB: ${POSTGRES_DB:-webgraph}
+      PUSH_HZ: ${PUSH_HZ:-20}
+    entrypoint: ["/app/writer"]
+
   # One-shot bulk seeder. Lives in the `seed` profile so it never runs as part
   # of a plain `docker compose up`. Trigger explicitly:
   #
