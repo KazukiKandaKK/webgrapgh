@@ -20,16 +20,16 @@ const (
 // WSHandler returns an echo.HandlerFunc that upgrades to WebSocket and
 // proxies hub broadcasts to the client.
 func WSHandler(h *Hub, allowedOrigins []string) echo.HandlerFunc {
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[o] = struct{}{}
+	}
 	originAllowed := func(origin string) bool {
 		if origin == "" {
-			return true
+			return false
 		}
-		for _, o := range allowedOrigins {
-			if o == origin {
-				return true
-			}
-		}
-		return false
+		_, ok := originSet[origin]
+		return ok
 	}
 	upgrader := websocket.Upgrader{
 		ReadBufferSize:  1024,

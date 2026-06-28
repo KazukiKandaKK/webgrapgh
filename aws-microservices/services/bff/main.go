@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -237,7 +238,17 @@ func historyHandler(client metricspb.MetricsServiceClient) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		names := MetricsAll
 		if q := c.QueryParam("metrics"); q != "" {
-			names = splitCSV(q)
+			requested := splitCSV(q)
+			validated := make([]string, 0, len(requested))
+			for _, n := range requested {
+				if slices.Contains(MetricsAll, n) {
+					validated = append(validated, n)
+				}
+			}
+			if len(validated) == 0 {
+				return echo.NewHTTPError(http.StatusBadRequest, "no valid metric names")
+			}
+			names = validated
 		}
 		minutes := 60
 		if q := c.QueryParam("minutes"); q != "" {
@@ -261,7 +272,8 @@ func historyHandler(client metricspb.MetricsServiceClient) echo.HandlerFunc {
 			MaxPoints:       int32(maxPoints),
 		})
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+			log.Printf("history: %v", err)
+			return echo.NewHTTPError(http.StatusBadGateway, "upstream error")
 		}
 
 		series := make(map[string]*historySeries, len(names))
@@ -274,7 +286,8 @@ func historyHandler(client metricspb.MetricsServiceClient) echo.HandlerFunc {
 				break
 			}
 			if err != nil {
-				return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+				log.Printf("history stream: %v", err)
+				return echo.NewHTTPError(http.StatusBadGateway, "upstream error")
 			}
 			for k, v := range t.Values {
 				s, ok := series[k]
@@ -301,7 +314,8 @@ func logsHistoryHandler(client logspb.LogServiceClient) echo.HandlerFunc {
 		defer cancel()
 		resp, err := client.GetHistory(ctx, &logspb.HistoryRequest{Limit: int32(limit)})
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadGateway, err.Error())
+			log.Printf("logs history: %v", err)
+			return echo.NewHTTPError(http.StatusBadGateway, "upstream error")
 		}
 		out := make([]wireLog, len(resp.Events))
 		for i, ev := range resp.Events {
