@@ -31,6 +31,25 @@
 3. データ更新で `useState` は呼ばない。`uplot.setData()` を ref 経由で imperative に叩く。
 4. Next.js は UI シェル・ルーティング・SSR のみ。リアルタイム経路には絡まない。
 
+## フロントエンド実装バリエーション
+
+同一の wire フォーマット（REST `/api/history` + WS `/ws` `/ws/logs`）に対して、複数のフレームワークで等価な UI を実装して比較しています。バックエンドは一切変更不要で差し替えられます。
+
+| ディレクトリ | フレームワーク | ランタイム依存 | 起動 |
+|------|------|------|------|
+| `frontend/` | Next.js + React | next / react / react-dom / uplot / yjs ほか | `docker compose up -d frontend`（既定） |
+| `frontend-solid/` | SolidJS + Vite | solid-js / @tanstack/solid-virtual / uplot | `docker compose --profile solid up -d frontend-solid` |
+| `frontend-svelte/` | Svelte 5 + Vite | **uplot のみ**（仮想スクロールも自前実装、フレームワークは原則コンパイルで消える） | `docker compose --profile svelte up -d frontend-svelte` |
+
+`frontend-svelte` は「依存関係を最小化したチャレンジ」版で、ランタイム依存は描画ライブラリ `uplot` だけ。Svelte コンパイラが UI を素の DOM 操作へ変換するためフレームワーク自体のランタイムが極小になり、ログテーブルの仮想スクロールも外部ライブラリを使わず ~30 行で実装しています。設計上の絶対原則（Worker 完結 / uPlot のみ / `setData` 直叩き / UI シェルのみ）はそのまま踏襲。
+
+いずれも host 側 :3000 を使うため、別実装に切り替える前に既定の `frontend` を停止してください:
+
+```bash
+docker compose stop frontend
+docker compose --profile svelte up -d frontend-svelte
+```
+
 ## ディレクトリ構成
 
 ```

@@ -1,0 +1,23 @@
+/* uPlot stylesheet — must come BEFORE @tailwind (CSS @import ordering rule) */
+@import "uplot/dist/uPlot.min.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body {
+  background: #020617;
+  color: #e2e8f0;
+}
+
+.uplot,
+.uplot * {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.u-legend {
+  color: #cbd5e1;
+}
+.u-axis {
+  color: #94a3b8;
+}
