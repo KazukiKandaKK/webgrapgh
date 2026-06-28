@@ -9,13 +9,19 @@ Minimal-dependency Svelte 5 dashboard. Single shared Web Worker streams metrics 
 
 ## Prerequisites / how to run
 
-The Docker `--profile svelte` image may build/run inconsistently; the most reliable path is a local prod build served by `vite preview` against the live backend:
+`frontend-svelte` is now the **default** compose frontend, so a plain `docker compose up -d --build` (no `--profile`) builds and serves it at `http://localhost:3000` alongside backend/writer/postgres. This is the most realistic path and what end users get.
 
-1. Backend + DB on `:8080` (Go + Postgres). Confirm with `curl -s http://localhost:8080/api/history | head -c 80` and `curl -s http://localhost:8080/api/logs/history | head -c 80`.
-2. `cd frontend-svelte && npm run build && npm run preview -- --port 3000` (build runs `svelte-check`; preview serves prod bundle). App at `http://localhost:3000`.
+1. From repo root: `docker compose up -d --build`. Confirm svelte is served: `curl -s localhost:3000 | grep -i '<title>'` → should contain `(Svelte)`.
+2. Backend + DB on `:8080`. Confirm with `curl -s http://localhost:8080/api/history | head -c 80` and `curl -s http://localhost:8080/api/logs/history | head -c 80`.
 3. Endpoints are read from localStorage settings or env defaults: WS `ws://localhost:8080/ws` (metrics), `ws://localhost:8080/ws/logs` (logs), REST `http://localhost:8080`.
 
-Note: `vite preview` (prod build) is preferred over `npm run dev` because the Docker context bug historically broke `@shared` resolution inside containers — building locally sidesteps it. If `vite preview` ever fails, try `npm run dev` as a fallback.
+Alternative (faster iteration / if a Docker build misbehaves): local prod build via `cd frontend-svelte && npm run build && npm run preview -- --port 3000` (build runs `svelte-check`). `npm run dev` is a further fallback. The historical `@shared` Docker-context bug was fixed (build context is repo root), so the Docker path should now work.
+
+### Testing a compose default-profile change
+When the change is "make service X the default" (profile assignment swap):
+- Verify statically: `docker compose config --services` (default) vs `docker compose --profile <name> config --services`.
+- Verify at runtime by actually bringing the stack up and checking *which UI is served* (e.g. page `<title>` / a unique build marker like "SVELTE EDITION"), not just the config list.
+- **Gotcha:** `docker compose down` does NOT remove containers for profile-gated services, so a stale exited container from an old default can survive and confuse `docker ps -a`. Remove it explicitly (`docker rm <name>`) and re-run the default `up` to prove it isn't recreated. Distinguish "Up Ns" (freshly started) from "Exited … minutes ago" (leftover).
 
 ## Routes
 `#/` Overview · `#/metrics` · `#/explore/<metric>` · `#/logs` · `#/alerts` · `#/settings`
