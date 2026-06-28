@@ -1,3 +1,5 @@
+import { levelClass, formatLogTime } from "@shared/utils";
+
 /**
  * Pure log row. Solid only re-runs the fine-grained reactive expressions
  * that depend on changed props — there's no virtual-DOM diff to skip, so
@@ -14,10 +16,7 @@ export type LogRowProps = {
 };
 
 export function LogRow(props: LogRowProps) {
-  const time = () =>
-    props.timeMs > 0
-      ? new Date(props.timeMs).toISOString().slice(11, 23)
-      : "--:--:--.---";
+  const time = () => formatLogTime(props.timeMs);
 
   return (
     <div
@@ -40,17 +39,4 @@ export function LogRow(props: LogRowProps) {
   );
 }
 
-function levelClass(level: string): string {
-  switch (level) {
-    case "ERROR":
-      return "text-rose-400";
-    case "WARN":
-      return "text-amber-300";
-    case "DEBUG":
-      return "text-slate-500";
-    case "INFO":
-      return "text-emerald-300";
-    default:
-      return "text-slate-600";
-  }
-}
+

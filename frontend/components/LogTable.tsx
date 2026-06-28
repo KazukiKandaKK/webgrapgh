@@ -4,10 +4,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LogEvent } from "@/lib/types";
 import { useWorker } from "@/lib/workerContext";
+import { LOG_ROW_HEIGHT, LOG_OVERSCAN } from "@shared/constants";
 import { LogRow } from "./LogRow";
-
-const ROW_HEIGHT = 28;
-const OVERSCAN = 12;
 
 /**
  * Virtualized log table. The full dataset lives in the Worker; we only ever
@@ -38,8 +36,8 @@ export function LogTable() {
   const virtualizer = useVirtualizer({
     count: total,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: OVERSCAN,
+    estimateSize: () => LOG_ROW_HEIGHT,
+    overscan: LOG_OVERSCAN,
   });
 
   const requestRange = useCallback(
@@ -88,7 +86,7 @@ export function LogTable() {
   const lastIdx = virtualItems[virtualItems.length - 1]?.index ?? 0;
   useEffect(() => {
     if (virtualItems.length === 0 || total === 0) return;
-    const padding = OVERSCAN;
+    const padding = LOG_OVERSCAN;
     const offset = Math.max(0, firstIdx - padding);
     const limit = lastIdx - firstIdx + 1 + padding * 2;
     requestRange(offset, limit);
@@ -151,7 +149,7 @@ export function LogTable() {
               <LogRow
                 key={vRow.key}
                 topPx={vRow.start}
-                heightPx={ROW_HEIGHT}
+                heightPx={LOG_ROW_HEIGHT}
                 id={ev?.id ?? -(idx + 1)}
                 timeMs={ev?.t ?? 0}
                 level={ev?.level ?? ""}
