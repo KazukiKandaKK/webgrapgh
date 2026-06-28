@@ -36,7 +36,7 @@ type Broadcaster interface {
 func Run(ctx context.Context, pool *pgxpool.Pool, h Broadcaster) {
 	var lastID int64
 	if err := pool.QueryRow(ctx, `SELECT COALESCE(MAX(id), 0) FROM metrics`).Scan(&lastID); err != nil {
-		log.Printf("watcher: init lastID: %v", err)
+		log.Fatalf("watcher: init lastID: %v", err)
 	}
 	log.Printf("watcher: started, LISTEN %s, lastID=%d", Channel, lastID)
 
@@ -140,6 +140,7 @@ func drain(ctx context.Context, pool *pgxpool.Pool, h Broadcaster, lastID *int64
 	for _, g := range ordered {
 		payload, err := json.Marshal(g.s)
 		if err != nil {
+			log.Printf("watcher: marshal sample: %v", err)
 			continue
 		}
 		h.Broadcast(payload)

@@ -76,6 +76,13 @@ export function startWorker(opts: StartOptions): WorkerController {
   let sabInitSeen = false;
   let firstFrameSeen = false;
 
+  worker.onerror = (ev: ErrorEvent) => {
+    // eslint-disable-next-line no-console
+    console.error("[bridge] worker error:", ev.message, ev);
+    statusHandlers.forEach((h) => h("metrics", "error", `worker: ${ev.message}`));
+    statusHandlers.forEach((h) => h("logs", "error", `worker: ${ev.message}`));
+  };
+
   worker.onmessage = (ev: MessageEvent<WorkerToMain>) => {
     const msg = ev.data;
     switch (msg.type) {

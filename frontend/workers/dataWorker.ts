@@ -386,7 +386,8 @@ function onMetricMessage(data: string) {
   let msg: WireSample;
   try {
     msg = JSON.parse(data) as WireSample;
-  } catch {
+  } catch (err) {
+    console.warn("[worker] metrics: failed to parse WS message", err);
     return;
   }
   const t = msg.t;
@@ -404,7 +405,8 @@ function onLogMessage(data: string) {
   let ev: LogEvent;
   try {
     ev = JSON.parse(data) as LogEvent;
-  } catch {
+  } catch (err) {
+    console.warn("[worker] logs: failed to parse WS message", err);
     return;
   }
   state.logRing.push(ev);

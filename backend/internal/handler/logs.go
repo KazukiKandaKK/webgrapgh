@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -14,9 +15,15 @@ func LogsHistory(store *logs.Store) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		limit := 10000
 		if q := c.QueryParam("limit"); q != "" {
-			if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= store.Capacity() {
-				limit = n
+			n, err := strconv.Atoi(q)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, "limit: invalid integer")
 			}
+			if n < 1 || n > store.Capacity() {
+				return echo.NewHTTPError(http.StatusBadRequest,
+					fmt.Sprintf("limit: must be between 1 and %d", store.Capacity()))
+			}
+			limit = n
 		}
 		return c.JSON(http.StatusOK, store.Snapshot(limit))
 	}

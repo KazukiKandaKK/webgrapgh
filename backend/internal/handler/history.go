@@ -45,15 +45,25 @@ func History(pool *pgxpool.Pool) echo.HandlerFunc {
 		}
 		minutes := 60
 		if q := c.QueryParam("minutes"); q != "" {
-			if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 24*60 {
-				minutes = n
+			n, err := strconv.Atoi(q)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, "minutes: invalid integer")
 			}
+			if n < 1 || n > 24*60 {
+				return echo.NewHTTPError(http.StatusBadRequest, "minutes: must be between 1 and 1440")
+			}
+			minutes = n
 		}
 		maxPoints := 0
 		if q := c.QueryParam("max_points"); q != "" {
-			if n, err := strconv.Atoi(q); err == nil && n > 0 && n <= 100_000 {
-				maxPoints = n
+			n, err := strconv.Atoi(q)
+			if err != nil {
+				return echo.NewHTTPError(http.StatusBadRequest, "max_points: invalid integer")
 			}
+			if n < 1 || n > 100_000 {
+				return echo.NewHTTPError(http.StatusBadRequest, "max_points: must be between 1 and 100000")
+			}
+			maxPoints = n
 		}
 
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 10*time.Second)
