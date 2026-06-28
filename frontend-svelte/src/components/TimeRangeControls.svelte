@@ -1,11 +1,5 @@
 <script lang="ts">
-  const PRESETS: { label: string; windowMs: number | null }[] = [
-    { label: "1m", windowMs: 60_000 },
-    { label: "5m", windowMs: 5 * 60_000 },
-    { label: "15m", windowMs: 15 * 60_000 },
-    { label: "1h", windowMs: 60 * 60_000 },
-    { label: "All", windowMs: null },
-  ];
+  import { TIME_RANGE_PRESETS as PRESETS } from "@shared/constants";
 
   type Props = {
     windowMs: number | null;

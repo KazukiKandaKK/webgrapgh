@@ -29,8 +29,8 @@ export type WireSample = {
 /** Single log event — matches Go's logs.Event JSON shape. */
 export type LogEvent = {
   id: number;
-  t: number;       // unix ms
-  level: string;   // INFO / WARN / ERROR / DEBUG
+  t: number; // unix ms
+  level: string; // INFO / WARN / ERROR / DEBUG
   src: string;
   msg: string;
 };
@@ -87,7 +87,12 @@ export type MetricSABs = {
 };
 
 export type WorkerToMain =
-  | { type: "status"; channel: "metrics" | "logs"; state: "connecting" | "open" | "closed" | "error"; detail?: string }
+  | {
+      type: "status";
+      channel: "metrics" | "logs";
+      state: "connecting" | "open" | "closed" | "error";
+      detail?: string;
+    }
   /**
    * One-time handshake: hands over per-metric SharedArrayBuffer pairs. The
    * bridge wraps these in Float64Array views and caches them. Sent only when

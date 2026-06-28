@@ -1,33 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { METRICS, type MetricName } from "../lib/types";
+  import { METRIC_META, CHART_HEIGHT } from "@shared/constants";
   import { useWorker } from "../lib/workerController.svelte";
   import TimeRangeControls from "./TimeRangeControls.svelte";
   import UplotChart from "./UplotChart.svelte";
   import StatusPill from "./StatusPill.svelte";
   import type { UplotChartHandle } from "../lib/chart";
-
-  type MetricMeta = {
-    label: string;
-    color: string;
-    unit: string;
-    yRange: [number | null, number | null];
-  };
-
-  const METRIC_META: Record<MetricName, MetricMeta> = {
-    cpu:         { label: "CPU",         color: "#38bdf8", unit: "%",     yRange: [0, 100] },
-    memory:      { label: "Memory",      color: "#a78bfa", unit: "%",     yRange: [0, 100] },
-    disk:        { label: "Disk",        color: "#facc15", unit: "%",     yRange: [0, 100] },
-    network:     { label: "Network",     color: "#f472b6", unit: "MB/s",  yRange: [0, null] },
-    gpu:         { label: "GPU",         color: "#34d399", unit: "%",     yRange: [0, 100] },
-    requests:    { label: "Requests",    color: "#60a5fa", unit: "req/s", yRange: [0, null] },
-    errors:      { label: "Errors",      color: "#fb7185", unit: "err/s", yRange: [0, null] },
-    latency_p50: { label: "Latency p50", color: "#fbbf24", unit: "ms",    yRange: [0, null] },
-    latency_p99: { label: "Latency p99", color: "#f97316", unit: "ms",    yRange: [0, null] },
-    queue:       { label: "Queue Depth", color: "#c084fc", unit: "items", yRange: [0, null] },
-  };
-
-  const CHART_HEIGHT = 180;
 
   const controller = useWorker();
 

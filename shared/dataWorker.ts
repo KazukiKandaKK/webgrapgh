@@ -182,14 +182,14 @@ function setupSABOutput() {
   // Feature-detect. In some browsers `crossOriginIsolated` is not on the
   // DedicatedWorkerGlobalScope type, so we read it permissively.
   const hasSAB = typeof SharedArrayBuffer !== "undefined";
-  const isolated = (self as unknown as { crossOriginIsolated?: boolean })
-    .crossOriginIsolated === true;
+  const isolated =
+    (self as unknown as { crossOriginIsolated?: boolean })
+      .crossOriginIsolated === true;
   if (!hasSAB || !isolated) {
     state.sabSlots = null;
     // eslint-disable-next-line no-console
     console.info(
-      `[worker] SAB unavailable (SAB=${hasSAB}, isolated=${isolated}); ` +
-        `falling back to transferable Float64Arrays.`
+      `[worker] SAB unavailable (SAB=${hasSAB}, isolated=${isolated}); falling back to transferable Float64Arrays.`,
     );
     return;
   }
@@ -219,7 +219,7 @@ function setupSABOutput() {
     `[worker] SAB output enabled: ${state.metrics.length} metrics × ` +
       `2 slots × ${cap} points = ${
         (state.metrics.length * 2 * byteLen * 2) / 1024
-      } KB shared (zero per-flush allocation).`
+      } KB shared (zero per-flush allocation).`,
   );
   post({ type: "sabInit", sabs: sabs as Record<MetricName, MetricSABs> });
 }
@@ -267,11 +267,16 @@ function pushPoint(buf: RingBuffer, t: number, v: number) {
 
 async function loadMetricHistory() {
   try {
-    post({ type: "status", channel: "metrics", state: "connecting", detail: "history" });
+    post({
+      type: "status",
+      channel: "metrics",
+      state: "connecting",
+      detail: "history",
+    });
     // Cap the server-side payload: ask for at most `bufferSize` points per
     // metric. The DB still scans the full range but the response is small.
     const url = `${state.apiBase}/api/history?metrics=${state.metrics.join(
-      ","
+      ",",
     )}&minutes=60&max_points=${state.bufferSize}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`history ${res.status}`);
@@ -299,7 +304,12 @@ async function loadMetricHistory() {
 
 async function loadLogHistory() {
   try {
-    post({ type: "status", channel: "logs", state: "connecting", detail: "history" });
+    post({
+      type: "status",
+      channel: "logs",
+      state: "connecting",
+      detail: "history",
+    });
     const url = `${state.apiBase}/api/logs/history?limit=${state.logRing.capacity}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`logs history ${res.status}`);
@@ -320,7 +330,12 @@ async function loadLogHistory() {
 
 function connectMetrics() {
   if (state.stopped) return;
-  post({ type: "status", channel: "metrics", state: "connecting", detail: "ws" });
+  post({
+    type: "status",
+    channel: "metrics",
+    state: "connecting",
+    detail: "ws",
+  });
   let ws: WebSocket;
   try {
     ws = new WebSocket(state.wsUrl);
@@ -333,7 +348,8 @@ function connectMetrics() {
     state.reconnectMetricMs = 500;
     post({ type: "status", channel: "metrics", state: "open" });
   };
-  ws.onerror = () => post({ type: "status", channel: "metrics", state: "error" });
+  ws.onerror = () =>
+    post({ type: "status", channel: "metrics", state: "error" });
   ws.onclose = () => {
     post({ type: "status", channel: "metrics", state: "closed" });
     state.wsMetrics = null;
@@ -430,15 +446,22 @@ function startFlushLoops() {
   if (state.frameFlushTimer !== null) self.clearInterval(state.frameFlushTimer);
   if (state.logFlushTimer !== null) self.clearInterval(state.logFlushTimer);
 
-  state.frameFlushTimer = self.setInterval(flushFrame, state.flushIntervalMs) as unknown as number;
-  state.logFlushTimer = self.setInterval(flushLogTotal, state.logTotalIntervalMs) as unknown as number;
+  state.frameFlushTimer = self.setInterval(
+    flushFrame,
+    state.flushIntervalMs,
+  ) as unknown as number;
+  state.logFlushTimer = self.setInterval(
+    flushLogTotal,
+    state.logTotalIntervalMs,
+  ) as unknown as number;
 }
 
 // Reused across every flushFrame call so we don't generate a fresh object +
 // array per tick. The {t, v} slot objects inside are still allocated per
 // metric per flush in the transferable fallback path — small + nursery-
 // friendly — but the outer container churn is eliminated.
-const reusablePayload: Record<string, { t: Float64Array; v: Float64Array }> = {};
+const reusablePayload: Record<string, { t: Float64Array; v: Float64Array }> =
+  {};
 const reusableTransfers: ArrayBuffer[] = [];
 // Reused across SAB-path flushes too.
 const reusableSabSizes: Record<string, number> = {};
@@ -447,7 +470,11 @@ const reusableSabSizes: Record<string, number> = {};
  * Compute the [startOffset, sliceSize, stride, outLen] for one metric given
  * the current windowMs filter. Returns null if the slice is empty.
  */
-function computeSlice(buf: RingBuffer, windowMs: number | null, maxRenderPoints: number) {
+function computeSlice(
+  buf: RingBuffer,
+  windowMs: number | null,
+  maxRenderPoints: number,
+) {
   const cap = buf.t.length;
   const startIdx = buf.size < cap ? 0 : buf.head;
 
@@ -555,7 +582,10 @@ function flushFrameTransfer() {
   }
 
   if (Object.keys(reusablePayload).length === 0) return;
-  const message: WorkerToMain = { type: "frame", metrics: reusablePayload as never };
+  const message: WorkerToMain = {
+    type: "frame",
+    metrics: reusablePayload as never,
+  };
   self.postMessage(message, reusableTransfers);
 }
 

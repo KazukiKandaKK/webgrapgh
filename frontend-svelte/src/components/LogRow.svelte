@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { levelClass, formatLogTime } from "@shared/utils";
+
   type Props = {
     topPx: number;
     heightPx: number;
@@ -11,26 +13,7 @@
 
   let { topPx, heightPx, timeMs, level, source, message }: Props = $props();
 
-  const time = $derived(
-    timeMs > 0
-      ? new Date(timeMs).toISOString().slice(11, 23)
-      : "--:--:--.---",
-  );
-
-  function levelClass(l: string): string {
-    switch (l) {
-      case "ERROR":
-        return "text-rose-400";
-      case "WARN":
-        return "text-amber-300";
-      case "DEBUG":
-        return "text-slate-500";
-      case "INFO":
-        return "text-emerald-300";
-      default:
-        return "text-slate-600";
-    }
-  }
+  const time = $derived(formatLogTime(timeMs));
 </script>
 
 <div

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import uPlot, { type AlignedData, type Options } from "uplot";
+  import { hexToRgba } from "@shared/utils";
   import type { UplotChartHandle } from "../lib/chart";
 
   type Props = {
@@ -109,15 +110,6 @@
       plot = null;
     };
   });
-
-  function hexToRgba(hex: string, alpha: number): string {
-    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    if (!m) return hex;
-    const r = parseInt(m[1], 16);
-    const g = parseInt(m[2], 16);
-    const b = parseInt(m[3], 16);
-    return `rgba(${r},${g},${b},${alpha})`;
-  }
 </script>
 
 <div bind:this={container} class="w-full" style="height: {height}px"></div>
