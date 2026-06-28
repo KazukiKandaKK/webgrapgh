@@ -7,6 +7,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   reactStrictMode: false, // avoid double-mount of imperative uPlot instances in dev
   output: "standalone",
+  // The `@shared` alias points at ../shared (outside this package). Without an
+  // explicit tracing root, Next infers the monorepo root and nests the
+  // standalone output under a subpath, breaking the Docker `node server.js`
+  // entrypoint. Pin it to this package so the standalone tree stays flat.
+  outputFileTracingRoot: __dirname,
   // Allow importing from the shared/ directory outside this package root.
   transpilePackages: [],
   webpack(config) {

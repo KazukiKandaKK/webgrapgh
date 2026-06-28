@@ -93,8 +93,9 @@ services:
   # (profile: ["svelte"]).
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Context is the repo root so the build can access ../shared.
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         # Compiled into the JS bundle that ships to the browser. These point at
         # the host-exposed backend port — the browser cannot reach `backend:8080`.
@@ -113,8 +114,9 @@ services:
   # Shares the same wire format with the backend — no server change needed.
   frontend-solid:
     build:
-      context: ./frontend-solid
-      dockerfile: Dockerfile
+      # Context is the repo root so the build can access ../shared.
+      context: .
+      dockerfile: frontend-solid/Dockerfile
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080}
         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
@@ -134,8 +136,9 @@ services:
   # Shares the same wire format with the backend — no server change needed.
   frontend-svelte:
     build:
-      context: ./frontend-svelte
-      dockerfile: Dockerfile
+      # Context is the repo root so the build can access ../shared.
+      context: .
+      dockerfile: frontend-svelte/Dockerfile
       args:
         VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080}
         VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}

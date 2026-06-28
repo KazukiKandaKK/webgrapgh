@@ -1,13 +1,19 @@
 # syntax=docker/dockerfile:1.7
+#
+# Build context is the REPO ROOT (see docker-compose.yml), not this directory,
+# because `@shared/*` resolves to ../shared (vite.config.ts / tsconfig.json) and
+# that code must sit next to this package inside the image.
 
 # ---------- build ----------
 FROM node:20-alpine AS build
-WORKDIR /app
-COPY package.json package-lock.json ./
+WORKDIR /app/frontend-svelte
+COPY frontend-svelte/package.json frontend-svelte/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund
 
-COPY . .
+# Shared core as a sibling of the package so ../shared resolves.
+COPY shared /app/shared
+COPY frontend-svelte ./
 
 # Browser-facing URLs are baked into the bundle at build time. Override with
 # --build-arg when targeting non-default hosts.
@@ -34,11 +40,11 @@ ENV NODE_ENV=production
 RUN addgroup -S app && adduser -S app -G app && chown app:app /app
 USER app
 
-COPY --from=build --chown=app:app /app/dist ./dist
-COPY --from=build --chown=app:app /app/node_modules ./node_modules
-COPY --from=build --chown=app:app /app/package.json ./package.json
-COPY --from=build --chown=app:app /app/vite.config.ts ./vite.config.ts
-COPY --from=build --chown=app:app /app/index.html ./index.html
+COPY --from=build --chown=app:app /app/frontend-svelte/dist ./dist
+COPY --from=build --chown=app:app /app/frontend-svelte/node_modules ./node_modules
+COPY --from=build --chown=app:app /app/frontend-svelte/package.json ./package.json
+COPY --from=build --chown=app:app /app/frontend-svelte/vite.config.ts ./vite.config.ts
+COPY --from=build --chown=app:app /app/frontend-svelte/index.html ./index.html
 
 EXPOSE 3000
 CMD ["npm", "run", "preview"]
