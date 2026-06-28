@@ -5,7 +5,6 @@
   import { useWorker } from "../lib/workerController.svelte";
   import TimeRangeControls from "./TimeRangeControls.svelte";
   import UplotChart from "./UplotChart.svelte";
-  import StatusPill from "./StatusPill.svelte";
   import type { UplotChartHandle } from "../lib/chart";
 
   const controller = useWorker();
@@ -55,21 +54,7 @@
         {METRICS.length} metrics · Worker → uPlot direct setData · Svelte
       </p>
     </div>
-    <div class="flex flex-wrap items-center gap-3">
-      <TimeRangeControls {windowMs} onChange={(v) => (windowMs = v)} />
-      <div class="flex gap-2">
-        <StatusPill
-          label="metrics"
-          state={controller.status.metrics.state}
-          detail={controller.status.metrics.detail}
-        />
-        <StatusPill
-          label="logs"
-          state={controller.status.logs.state}
-          detail={controller.status.logs.detail}
-        />
-      </div>
-    </div>
+    <TimeRangeControls {windowMs} onChange={(v) => (windowMs = v)} />
   </header>
 
   <div
