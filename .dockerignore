@@ -1,0 +1,16 @@
+# Build context is the repo root for the frontend images (they need shared/),
+# so keep heavy / irrelevant trees out of the context sent to the daemon.
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+**/*.log
+.git
+**/.env
+**/.env.*
+**/Dockerfile
+**/.dockerignore
+README.md
+bench
+aws-blocks
+aws-microservices
