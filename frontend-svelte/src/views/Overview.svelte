@@ -55,7 +55,7 @@
       {@const cell = cells[name]}
       <button
         type="button"
-        onclick={() => navigate("/metrics")}
+        onclick={() => navigate(`/explore/${name}`)}
         class="flex flex-col gap-2 rounded-lg border border-slate-800 bg-slate-900/60 p-4 text-left shadow transition hover:border-slate-600"
         style={`border-left: 3px solid ${meta.color}`}
       >
