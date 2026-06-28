@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -52,9 +53,12 @@ func getEnv(key, def string) string {
 
 func getEnvInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			return n
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			log.Printf("config: ignoring non-integer %s=%q (using default %d): %v", key, v, def, err)
+			return def
 		}
+		return n
 	}
 	return def
 }
