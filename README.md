@@ -3,14 +3,14 @@
 メインスレッドをブロックしないリアルタイム時系列ダッシュボード。
 
 - **Backend**: Go (Echo) + Gorilla WebSocket + PostgreSQL
-- **Frontend**: Next.js (App Router) + React + TailwindCSS + uPlot + Web Worker
+- **Frontend (既定)**: Svelte 5 + Vite + TailwindCSS + uPlot + Web Worker（ランタイム依存は `uplot` のみ）
 
 ## アーキテクチャ
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
 │                      Browser (main thread)                    │
-│  Next.js / React (UIシェルのみ) ──refs──▶ uPlot (Canvas描画)  │
+│  Svelte / Vite (UIシェルのみ) ──refs──▶ uPlot (Canvas描画)   │
 │           ▲ postMessage (描画用配列のみ)                       │
 ├───────────│───────────────────────────────────────────────────┤
 │           │           Web Worker (dataWorker.ts)              │
@@ -28,8 +28,8 @@
 
 1. JSONパース・集計・間引きは **Web Worker** で完結。メインスレッドには `Float64Array` のみ渡す。
 2. グラフは **uPlot (Canvas)** のみ。SVG / DOM ベースのライブラリは使わない。
-3. データ更新で `useState` は呼ばない。`uplot.setData()` を ref 経由で imperative に叩く。
-4. Next.js は UI シェル・ルーティング・SSR のみ。リアルタイム経路には絡まない。
+3. データ更新でフレームワークの state（`useState` 等）は触らない。`uplot.setData()` を ref 経由で imperative に叩く。
+4. フロントエンド（Svelte / Solid / Next）は UI シェル・ルーティングのみ。リアルタイム経路には絡まない。
 
 ## フロントエンド実装バリエーション
 
@@ -37,17 +37,19 @@
 
 | ディレクトリ | フレームワーク | ランタイム依存 | 起動 |
 |------|------|------|------|
-| `frontend/` | Next.js + React | next / react / react-dom / uplot / yjs ほか | `docker compose up -d frontend`（既定） |
+| `frontend-svelte/` | Svelte 5 + Vite | **uplot のみ**（仮想スクロールも自前実装、フレームワークは原則コンパイルで消える） | `docker compose up -d frontend-svelte`（既定） |
 | `frontend-solid/` | SolidJS + Vite | solid-js / @tanstack/solid-virtual / uplot | `docker compose --profile solid up -d frontend-solid` |
-| `frontend-svelte/` | Svelte 5 + Vite | **uplot のみ**（仮想スクロールも自前実装、フレームワークは原則コンパイルで消える） | `docker compose --profile svelte up -d frontend-svelte` |
+| `frontend/` | Next.js + React | next / react / react-dom / uplot / yjs ほか | `docker compose --profile next up -d frontend` |
 
 `frontend-svelte` は「依存関係を最小化したチャレンジ」版で、ランタイム依存は描画ライブラリ `uplot` だけ。Svelte コンパイラが UI を素の DOM 操作へ変換するためフレームワーク自体のランタイムが極小になり、ログテーブルの仮想スクロールも外部ライブラリを使わず ~30 行で実装しています。設計上の絶対原則（Worker 完結 / uPlot のみ / `setData` 直叩き / UI シェルのみ）はそのまま踏襲。
 
-いずれも host 側 :3000 を使うため、別実装に切り替える前に既定の `frontend` を停止してください:
+既定では `frontend-svelte` がプロファイル無しで起動します。いずれも host 側 :3000 を使うため、別実装に切り替える前に既定の `frontend-svelte` を停止してください:
 
 ```bash
-docker compose stop frontend
-docker compose --profile svelte up -d frontend-svelte
+docker compose stop frontend-svelte
+docker compose --profile next up -d frontend     # Next.js に切り替え
+# または
+docker compose --profile solid up -d frontend-solid  # SolidJS に切り替え
 ```
 
 ## ディレクトリ構成
@@ -64,11 +66,11 @@ docker compose --profile svelte up -d frontend-svelte
 │       ├── handler/            # /api/history, /ws
 │       ├── hub/                # WS 接続管理 & ブロードキャスト
 │       └── metrics/            # ダミーメトリクス生成器
-└── frontend/                   # Next.js (App Router)
-    ├── app/                    # layout / page / globals
-    ├── components/             # UplotChart, DashboardGrid, Sidebar
-    ├── lib/                    # workerBridge, types
-    └── workers/dataWorker.ts   # WS + パース + ダウンサンプル
+├── frontend-svelte/            # Svelte 5 + Vite（既定フロントエンド）
+│   └── src/                    # App.svelte / views / components / lib
+├── frontend-solid/             # SolidJS + Vite（--profile solid）
+├── frontend/                   # Next.js App Router（--profile next）
+└── shared/                     # 共有コア（types / dataWorker / bridge）
 ```
 
 ## セットアップ
@@ -78,12 +80,13 @@ docker compose --profile svelte up -d frontend-svelte
 ```bash
 cp .env.example .env
 docker compose up --build -d
-# postgres :5432 / backend :8080 / frontend :3000
+# postgres :5432 / backend :8080 / frontend-svelte :3000
 ```
 
+- 既定では `frontend-svelte`（依存最小の Svelte 版）が :3000 で起動します。
 - 初回起動時に backend が過去 1 時間分のダミーデータ (`SEED_POINTS_PER_METRIC` 件/メトリクス) を PG に投入します。
 - ブラウザで `http://localhost:3000` を開くと、履歴 1h を初期描画 → WS 接続 → リアルタイム更新に切り替わります。
-- `NEXT_PUBLIC_*` はビルド時に bundle に焼き込まれるため、ホスト名やポートを変えた場合は `docker compose build frontend` で再ビルドが必要です。
+- `VITE_*` はビルド時に bundle に焼き込まれるため、ホスト名やポートを変えた場合は `docker compose build frontend-svelte` で再ビルドが必要です。
 
 ### 大量データの投入 (bulk seed CLI)
 
