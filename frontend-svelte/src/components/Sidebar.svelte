@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ROUTES, router, navigate } from "../lib/router.svelte";
+  import { ROUTES, router, navigate, isActive } from "../lib/router.svelte";
   import { useWorker } from "../lib/workerController.svelte";
+  import { alerts } from "../lib/alerts.svelte";
   import StatusPill from "./StatusPill.svelte";
 
   const controller = useWorker();
@@ -20,24 +21,36 @@
   <div class="mb-6">
     <div class="text-xs uppercase tracking-widest text-slate-500">webgrapgh</div>
     <div class="mt-1 text-lg font-semibold">Realtime Dashboard</div>
-    <div class="mt-1 text-[10px] uppercase tracking-widest text-sky-400/70">
+    <div
+      class="mt-1 text-[10px] uppercase tracking-widest"
+      style="color: var(--accent)"
+    >
       Svelte edition
     </div>
   </div>
 
   <nav class="space-y-1">
     {#each ROUTES as r (r.path)}
+      {@const active = isActive(r.path, router.path)}
       <button
         type="button"
         onclick={() => navigate(r.path)}
         class={`flex w-full items-center gap-3 rounded px-3 py-2 text-sm transition ${
-          router.path === r.path
-            ? "bg-sky-500/20 text-sky-200"
-            : "text-slate-300 hover:bg-slate-800"
+          active ? "" : "text-slate-300 hover:bg-slate-800"
         }`}
+        style={active
+          ? "background-color: var(--accent-soft); color: var(--accent)"
+          : ""}
       >
         <span class="w-4 text-center">{r.icon}</span>
-        <span>{r.label}</span>
+        <span class="flex-1 text-left">{r.label}</span>
+        {#if r.path === "/alerts" && alerts.firingCount > 0}
+          <span
+            class="rounded-full bg-rose-500/90 px-1.5 text-[10px] font-semibold text-white"
+          >
+            {alerts.firingCount}
+          </span>
+        {/if}
       </button>
     {/each}
   </nav>
