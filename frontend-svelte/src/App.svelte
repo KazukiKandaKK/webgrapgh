@@ -20,7 +20,16 @@
 
   // Single worker for the whole app, shared by every view via context. Views
   // mount/unmount on navigation but the stream and ring buffers stay alive.
-  const controller = new WorkerController({ apiBase, wsUrl, wsLogsUrl });
+  // The worker keeps ingesting WS data into the ring buffers continuously; the
+  // flush rates below only govern how often the UI is repainted. 1 Hz is plenty
+  // for an at-a-glance dashboard and keeps the main thread near-idle.
+  const controller = new WorkerController({
+    apiBase,
+    wsUrl,
+    wsLogsUrl,
+    flushHz: 1,
+    logTotalHz: 1,
+  });
   provideWorker(controller);
 
   // Apply the accent color as CSS variables so themed bits (nav, active range)
