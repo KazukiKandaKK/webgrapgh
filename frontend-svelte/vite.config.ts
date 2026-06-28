@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { resolve } from "path";
 
 // Cross-Origin Isolation headers — required for SharedArrayBuffer (the
 // metric ring buffers the worker hands to the main thread without copying).
@@ -11,6 +12,11 @@ const coopCoep = {
 
 export default defineConfig({
   plugins: [svelte()],
+  resolve: {
+    alias: {
+      "@shared": resolve(__dirname, "../shared"),
+    },
+  },
   server: {
     port: 3000,
     strictPort: true,

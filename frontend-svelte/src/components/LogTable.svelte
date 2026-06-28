@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { LogEvent } from "../lib/types";
+  import { LOG_ROW_HEIGHT, LOG_OVERSCAN } from "@shared/constants";
   import { useWorker } from "../lib/workerController.svelte";
   import LogRow from "./LogRow.svelte";
 
-  const ROW_HEIGHT = 28;
-  const OVERSCAN = 12;
+  const ROW_HEIGHT = LOG_ROW_HEIGHT;
+  const OVERSCAN = LOG_OVERSCAN;
   const VIEWPORT_HEIGHT = 520;
 
   /**

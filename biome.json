@@ -1,0 +1,56 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "include": [
+      "shared/**/*.ts",
+      "frontend/**/*.{ts,tsx}",
+      "frontend-solid/**/*.{ts,tsx}",
+      "frontend-svelte/**/*.ts"
+    ],
+    "ignore": [
+      "**/node_modules",
+      "**/dist",
+      "**/.next",
+      "**/build",
+      "**/*.min.js",
+      "**/*.config.ts",
+      "**/vite-env.d.ts"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noConsole": "off",
+        "noExplicitAny": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "warn"
+      },
+      "complexity": {
+        "noForEach": "off"
+      }
+    }
+  }
+}

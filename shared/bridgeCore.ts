@@ -7,20 +7,20 @@ import type {
 } from "./types";
 
 export type FrameHandler = (
-  metrics: Record<MetricName, { t: Float64Array; v: Float64Array }>
+  metrics: Record<MetricName, { t: Float64Array; v: Float64Array }>,
 ) => void;
 
 export type StatusHandler = (
   channel: "metrics" | "logs",
   state: "connecting" | "open" | "closed" | "error",
-  detail?: string
+  detail?: string,
 ) => void;
 
 export type LogTotalHandler = (total: number) => void;
 export type LogSliceHandler = (
   requestId: number,
   offset: number,
-  items: LogEvent[]
+  items: LogEvent[],
 ) => void;
 
 export type StartOptions = {
@@ -52,7 +52,7 @@ export type BridgeCore = {
  */
 export function createBridgeCore(
   worker: Worker,
-  opts: StartOptions
+  opts: StartOptions,
 ): BridgeCore {
   const frameHandlers = new Set<FrameHandler>();
   const statusHandlers = new Set<StatusHandler>();
@@ -60,7 +60,12 @@ export function createBridgeCore(
   const logSliceHandlers = new Set<LogSliceHandler>();
 
   // SAB view cache. Populated once on `sabInit`. Reused forever after.
-  type ViewPair = { tA: Float64Array; vA: Float64Array; tB: Float64Array; vB: Float64Array };
+  type ViewPair = {
+    tA: Float64Array;
+    vA: Float64Array;
+    tB: Float64Array;
+    vB: Float64Array;
+  };
   const sabViews = new Map<MetricName, ViewPair>();
   // Reused payload object for the sabTick → onFrame handoff.
   type Slot = { t: Float64Array; v: Float64Array };
@@ -73,7 +78,9 @@ export function createBridgeCore(
   worker.onerror = (ev: ErrorEvent) => {
     // eslint-disable-next-line no-console
     console.error("[bridge] worker error:", ev.message, ev);
-    statusHandlers.forEach((h) => h("metrics", "error", `worker: ${ev.message}`));
+    statusHandlers.forEach((h) =>
+      h("metrics", "error", `worker: ${ev.message}`),
+    );
     statusHandlers.forEach((h) => h("logs", "error", `worker: ${ev.message}`));
   };
 
@@ -87,7 +94,7 @@ export function createBridgeCore(
           console.info(
             `[bridge] first frame (transfer path), ${
               Object.keys(msg.metrics).length
-            } metrics, ${frameHandlers.size} handler(s)`
+            } metrics, ${frameHandlers.size} handler(s)`,
           );
         }
         frameHandlers.forEach((h) => h(msg.metrics));
@@ -95,7 +102,10 @@ export function createBridgeCore(
       case "sabInit":
         sabViews.clear();
         sabFrameSlots.clear();
-        for (const [name, s] of Object.entries(msg.sabs) as [MetricName, MetricSABs][]) {
+        for (const [name, s] of Object.entries(msg.sabs) as [
+          MetricName,
+          MetricSABs,
+        ][]) {
           sabViews.set(name, {
             tA: new Float64Array(s.tA),
             vA: new Float64Array(s.vA),
@@ -109,14 +119,15 @@ export function createBridgeCore(
         }
         sabInitSeen = true;
         // eslint-disable-next-line no-console
-        console.info(
-          `[bridge] sabInit received (${sabViews.size} metrics)`
-        );
+        console.info(`[bridge] sabInit received (${sabViews.size} metrics)`);
         return;
       case "sabTick": {
         const useA = (msg.gen & 1) === 1;
         for (const k in sabFramePayload) delete sabFramePayload[k];
-        for (const [name, size] of Object.entries(msg.sizes) as [MetricName, number][]) {
+        for (const [name, size] of Object.entries(msg.sizes) as [
+          MetricName,
+          number,
+        ][]) {
           const views = sabViews.get(name);
           const slot = sabFrameSlots.get(name);
           if (!views || !slot) continue;
@@ -132,11 +143,16 @@ export function createBridgeCore(
           console.info(
             `[bridge] first sabTick (gen=${msg.gen}, ${
               Object.keys(sabFramePayload).length
-            } metrics, ${frameHandlers.size} handler(s))`
+            } metrics, ${frameHandlers.size} handler(s))`,
           );
         }
         frameHandlers.forEach((h) =>
-          h(sabFramePayload as Record<MetricName, { t: Float64Array; v: Float64Array }>)
+          h(
+            sabFramePayload as Record<
+              MetricName,
+              { t: Float64Array; v: Float64Array }
+            >,
+          ),
         );
         return;
       }
@@ -147,7 +163,9 @@ export function createBridgeCore(
         logTotalHandlers.forEach((h) => h(msg.total));
         return;
       case "logSlice":
-        logSliceHandlers.forEach((h) => h(msg.requestId, msg.offset, msg.items));
+        logSliceHandlers.forEach((h) =>
+          h(msg.requestId, msg.offset, msg.items),
+        );
         return;
     }
   };
@@ -186,7 +204,7 @@ export function createBridgeCore(
       frameHandlers.add(h);
       // eslint-disable-next-line no-console
       console.info(
-        `[bridge] onFrame subscribed (total=${frameHandlers.size}, sabInitSeen=${sabInitSeen})`
+        `[bridge] onFrame subscribed (total=${frameHandlers.size}, sabInitSeen=${sabInitSeen})`,
       );
       // Kick the worker so a late-attaching handler doesn't miss the first
       // already-drained frame.
