@@ -2,10 +2,8 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { For, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import type { LogEvent } from "../lib/types";
 import { useWorker } from "../lib/workerController";
+import { LOG_ROW_HEIGHT, LOG_OVERSCAN } from "@shared/constants";
 import { LogRow } from "./LogRow";
-
-const ROW_HEIGHT = 28;
-const OVERSCAN = 12;
 
 /**
  * Virtualized log table. The full dataset lives in the Worker; we only ever
@@ -32,8 +30,8 @@ export function LogTable() {
       return controller.logTotal();
     },
     getScrollElement: () => scrollEl,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: OVERSCAN,
+    estimateSize: () => LOG_ROW_HEIGHT,
+    overscan: LOG_OVERSCAN,
   });
 
   // Slice response handler — accept only the latest request, discard stale.
@@ -78,7 +76,7 @@ export function LogTable() {
     if (items.length === 0 || total === 0) return;
     const first = items[0].index;
     const last = items[items.length - 1].index;
-    const padding = OVERSCAN;
+    const padding = LOG_OVERSCAN;
     const offset = Math.max(0, first - padding);
     const limit = last - first + 1 + padding * 2;
     requestRange(offset, limit);
@@ -143,7 +141,7 @@ export function LogTable() {
               return (
                 <LogRow
                   topPx={vRow.start}
-                  heightPx={ROW_HEIGHT}
+                  heightPx={LOG_ROW_HEIGHT}
                   id={ev()?.id ?? -(vRow.index + 1)}
                   timeMs={ev()?.t ?? 0}
                   level={ev()?.level ?? ""}

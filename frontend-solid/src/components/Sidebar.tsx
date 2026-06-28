@@ -1,5 +1,5 @@
 import { For, createSignal, onCleanup, onMount } from "solid-js";
-import { METRICS } from "../lib/types";
+import { METRICS } from "@shared/types";
 
 export function Sidebar() {
   const [now, setNow] = createSignal("");

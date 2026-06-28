@@ -1,5 +1,6 @@
 import { onCleanup, onMount } from "solid-js";
 import uPlot, { type AlignedData, type Options } from "uplot";
+import { hexToRgba } from "@shared/utils";
 
 export type UplotChartHandle = {
   setData: (t: Float64Array, v: Float64Array) => void;
@@ -108,11 +109,4 @@ export function UplotChart(props: UplotChartProps) {
   return <div ref={container!} class="w-full" style={{ height: (props.height ?? 220) + "px" }} />;
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!m) return hex;
-  const r = parseInt(m[1], 16);
-  const g = parseInt(m[2], 16);
-  const b = parseInt(m[3], 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+

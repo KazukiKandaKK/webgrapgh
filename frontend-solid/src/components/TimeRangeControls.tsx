@@ -1,12 +1,5 @@
 import { For } from "solid-js";
-
-const PRESETS: { label: string; windowMs: number | null }[] = [
-  { label: "1m", windowMs: 60_000 },
-  { label: "5m", windowMs: 5 * 60_000 },
-  { label: "15m", windowMs: 15 * 60_000 },
-  { label: "1h", windowMs: 60 * 60_000 },
-  { label: "All", windowMs: null },
-];
+import { TIME_RANGE_PRESETS } from "@shared/constants";
 
 type Props = {
   windowMs: number | null;
@@ -19,7 +12,7 @@ export function TimeRangeControls(props: Props) {
       <span class="px-2 text-xs uppercase tracking-widest text-slate-500">
         range
       </span>
-      <For each={PRESETS}>
+      <For each={TIME_RANGE_PRESETS}>
         {(p) => {
           const active = () => p.windowMs === props.windowMs;
           return (

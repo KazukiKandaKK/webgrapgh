@@ -1,5 +1,9 @@
 import { defineConfig } from "vite";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import solid from "vite-plugin-solid";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Cross-Origin Isolation headers — required for SharedArrayBuffer (the
 // metric ring buffers the worker hands to the main thread without copying).
@@ -11,6 +15,11 @@ const coopCoep = {
 
 export default defineConfig({
   plugins: [solid()],
+  resolve: {
+    alias: {
+      "@shared": resolve(__dirname, "../shared"),
+    },
+  },
   server: {
     port: 3000,
     strictPort: true,

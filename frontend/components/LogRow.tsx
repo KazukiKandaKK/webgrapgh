@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import { levelClass, formatLogTime } from "@shared/utils";
 
 /**
  * Pure log row. Props are all primitives so React.memo's default shallow
@@ -25,10 +26,7 @@ export const LogRow = memo(function LogRow({
   source,
   message,
 }: LogRowProps) {
-  const time =
-    timeMs > 0
-      ? new Date(timeMs).toISOString().slice(11, 23)
-      : "--:--:--.---";
+  const time = formatLogTime(timeMs);
   return (
     <div
       style={{
@@ -50,17 +48,4 @@ export const LogRow = memo(function LogRow({
   );
 });
 
-function levelClass(level: string): string {
-  switch (level) {
-    case "ERROR":
-      return "text-rose-400";
-    case "WARN":
-      return "text-amber-300";
-    case "DEBUG":
-      return "text-slate-500";
-    case "INFO":
-      return "text-emerald-300";
-    default:
-      return "text-slate-600";
-  }
-}
+

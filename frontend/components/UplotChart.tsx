@@ -2,6 +2,7 @@
 
 import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import uPlot, { type AlignedData, type Options } from "uplot";
+import { hexToRgba } from "@shared/utils";
 
 export type UplotChartHandle = {
   /** Imperative data swap — bypasses React entirely. */
@@ -127,11 +128,4 @@ export const UplotChart = forwardRef<UplotChartHandle, Props>(function UplotChar
   return <div ref={containerRef} className="w-full" style={{ height }} />;
 });
 
-function hexToRgba(hex: string, alpha: number): string {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  if (!m) return hex;
-  const r = parseInt(m[1], 16);
-  const g = parseInt(m[2], 16);
-  const b = parseInt(m[3], 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+
