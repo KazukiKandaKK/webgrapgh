@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,10 +23,25 @@ type MetricSeries struct {
 }
 
 func History(pool *pgxpool.Pool) echo.HandlerFunc {
+	allowed := make(map[string]struct{}, len(db.MetricNames))
+	for _, n := range db.MetricNames {
+		allowed[n] = struct{}{}
+	}
+
 	return func(c echo.Context) error {
 		names := db.MetricNames
 		if q := c.QueryParam("metrics"); q != "" {
-			names = splitCSV(q)
+			requested := splitCSV(q)
+			validated := make([]string, 0, len(requested))
+			for _, n := range requested {
+				if _, ok := allowed[n]; ok {
+					validated = append(validated, n)
+				}
+			}
+			if len(validated) == 0 {
+				return echo.NewHTTPError(http.StatusBadRequest, "no valid metric names")
+			}
+			names = validated
 		}
 		minutes := 60
 		if q := c.QueryParam("minutes"); q != "" {
@@ -45,7 +61,8 @@ func History(pool *pgxpool.Pool) echo.HandlerFunc {
 
 		raw, err := db.FetchHistory(ctx, pool, names, time.Duration(minutes)*time.Minute, maxPoints)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+			log.Printf("history: %v", err)
+			return echo.NewHTTPError(http.StatusInternalServerError, "internal error")
 		}
 
 		resp := HistoryResponse{Metrics: make(map[string]MetricSeries, len(raw))}

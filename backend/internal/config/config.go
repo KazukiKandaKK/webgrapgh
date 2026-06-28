@@ -13,6 +13,7 @@ type Config struct {
 	PostgresUser     string
 	PostgresPassword string
 	PostgresDB       string
+	PostgresSSLMode  string
 
 	BackendPort          int
 	SeedPointsPerMetric  int
@@ -28,6 +29,7 @@ func Load() Config {
 		PostgresUser:        getEnv("POSTGRES_USER", "webgraph"),
 		PostgresPassword:    getEnv("POSTGRES_PASSWORD", "webgraph"),
 		PostgresDB:          getEnv("POSTGRES_DB", "webgraph"),
+		PostgresSSLMode:     getEnv("POSTGRES_SSLMODE", "disable"),
 		BackendPort:         getEnvInt("BACKEND_PORT", 8080),
 		SeedPointsPerMetric: getEnvInt("SEED_POINTS_PER_METRIC", 20000),
 		PushHz:              getEnvInt("PUSH_HZ", 20),
@@ -38,8 +40,8 @@ func Load() Config {
 
 func (c Config) PostgresDSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		c.PostgresHost, c.PostgresPort, c.PostgresUser, c.PostgresPassword, c.PostgresDB,
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.PostgresHost, c.PostgresPort, c.PostgresUser, c.PostgresPassword, c.PostgresDB, c.PostgresSSLMode,
 	)
 }
 
