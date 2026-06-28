@@ -88,8 +88,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-webgraph}
     entrypoint: ["/app/seed"]
 
-  # Default: Next.js (React) frontend. To swap to the SolidJS rewrite, stop
-  # this and start `frontend-solid` (profile: ["solid"]).
+  # Default: Next.js (React) frontend. To swap to a rewrite, stop this and
+  # start `frontend-solid` (profile: ["solid"]) or `frontend-svelte`
+  # (profile: ["svelte"]).
   frontend:
     build:
       context: ./frontend
@@ -121,6 +122,27 @@ services:
     image: webgrapgh-frontend-solid
     container_name: webgraph-frontend-solid
     profiles: ["solid"]
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+  # Svelte rewrite. Opt-in via `--profile svelte`. Bring it up like:
+  #   docker compose stop frontend
+  #   docker compose --profile svelte up -d frontend-svelte
+  # Shares the same wire format with the backend — no server change needed.
+  frontend-svelte:
+    build:
+      context: ./frontend-svelte
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:8080}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8080/ws}
+        VITE_WS_LOGS_URL: ${VITE_WS_LOGS_URL:-ws://localhost:8080/ws/logs}
+    image: webgrapgh-frontend-svelte
+    container_name: webgraph-frontend-svelte
+    profiles: ["svelte"]
     restart: unless-stopped
     depends_on:
       - backend
