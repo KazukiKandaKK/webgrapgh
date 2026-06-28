@@ -17,11 +17,20 @@ Minimal-dependency Svelte 5 dashboard. Single shared Web Worker streams metrics 
 
 Alternative (faster iteration / if a Docker build misbehaves): local prod build via `cd frontend-svelte && npm run build && npm run preview -- --port 3000` (build runs `svelte-check`). `npm run dev` is a further fallback. The historical `@shared` Docker-context bug was fixed (build context is repo root), so the Docker path should now work.
 
+**WS origin gotcha:** the backend's `AllowedOrigins` defaults to `http://localhost:3000` only (`backend/internal/config`). If you serve the frontend on any other port (e.g. `vite preview --port 3001`), the metrics/logs WS handshake is rejected and the stream pills stay `connecting`/`closed` forever while REST history still works. **Always serve the preview on `:3000`** — if the docker `webgraph-frontend-svelte` container holds the port, `docker stop webgraph-frontend-svelte` first, then restart it when done.
+
 ### Testing a compose default-profile change
 When the change is "make service X the default" (profile assignment swap):
 - Verify statically: `docker compose config --services` (default) vs `docker compose --profile <name> config --services`.
 - Verify at runtime by actually bringing the stack up and checking *which UI is served* (e.g. page `<title>` / a unique build marker like "SVELTE EDITION"), not just the config list.
 - **Gotcha:** `docker compose down` does NOT remove containers for profile-gated services, so a stale exited container from an old default can survive and confuse `docker ps -a`. Remove it explicitly (`docker rm <name>`) and re-run the default `up` to prove it isn't recreated. Distinguish "Up Ns" (freshly started) from "Exited … minutes ago" (leftover).
+
+### Testing a timing / refresh-cadence change (e.g. flushHz / logTotalHz)
+The worker emits frames on a `setInterval`; `App.svelte` passes `flushHz` (chart repaint, default 30) and `logTotalHz` (log-count update, default 5) into `createBridgeCore`, mapped in `shared/dataWorker.ts` as `flushIntervalMs = round(1000/flushHz)`. A repaint-rate change (e.g. 30Hz→1Hz) is **invisible to the eye and to screenshots** — a broken change looks identical on video. To test it adversarially:
+- Add a **temporary on-screen overlay** (test-only, do NOT commit) that subscribes via `controller.onFrame(...)`, records `performance.now()` per frame, and renders the median inter-frame delta in a fixed badge. This reads the REAL emitted cadence, independent of the config value.
+- Assert the measured interval matches the target (1Hz → ~1000ms; 30Hz → tens of ms).
+- Add a **control**: rebuild with the OLD value and confirm the overlay reads a clearly different number — proves the overlay isn't hardcoded and the knob actually drives cadence.
+- Revert the instrumentation + control edit before finishing (`git checkout -- frontend-svelte/src/App.svelte`).
 
 ## Routes
 `#/` Overview · `#/metrics` · `#/explore/<metric>` · `#/logs` · `#/alerts` · `#/settings`
