@@ -1,0 +1,100 @@
+# webgrapgh sidecar stack
+# ======================
+# Drop this alongside your existing application to monitor all containers
+# running on the same Docker host.
+#
+# Usage:
+#   cd sidecar/
+#   docker compose -f docker-compose.sidecar.yml up -d
+#
+# Or via the setup script:
+#   ./setup.sh
+#
+# This stack does NOT modify or depend on your application containers.
+# It reads the Docker daemon socket (read-only) to auto-discover all running
+# containers and collect CPU%, memory, and network metrics.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: webgrapgh-sidecar-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-webgrapgh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgrapgh}
+      POSTGRES_DB: ${POSTGRES_DB:-webgrapgh}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - webgrapgh_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-webgrapgh} -d ${POSTGRES_DB:-webgrapgh}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    image: ghcr.io/kazukikandakk/webgrapgh-backend:latest
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: webgrapgh-sidecar-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgrapgh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgrapgh}
+      POSTGRES_DB: ${POSTGRES_DB:-webgrapgh}
+      BACKEND_PORT: 8080
+      SEED_POINTS_PER_METRIC: "0"
+      PUSH_HZ: "0"
+      LOG_PUSH_HZ: "0"
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:13000}
+    ports:
+      - "127.0.0.1:${BACKEND_PORT:-18080}:8080"
+
+  collector:
+    image: ghcr.io/kazukikandakk/webgrapgh-backend:latest
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: webgrapgh-sidecar-collector
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgrapgh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgrapgh}
+      POSTGRES_DB: ${POSTGRES_DB:-webgrapgh}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      COLLECT_HZ: ${COLLECT_HZ:-1}
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    entrypoint: ["/app/collector"]
+
+  dashboard:
+    image: ghcr.io/kazukikandakk/webgrapgh-frontend-svelte:latest
+    build:
+      context: ..
+      dockerfile: frontend-svelte/Dockerfile
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:18080}
+        VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:18080/ws}
+        VITE_WS_LOGS_URL: ${VITE_WS_LOGS_URL:-ws://localhost:18080/ws/logs}
+    container_name: webgrapgh-sidecar-dashboard
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${DASHBOARD_PORT:-13000}:3000"
+
+volumes:
+  webgrapgh_pgdata:
