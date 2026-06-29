@@ -14,6 +14,7 @@ export const ROUTES: Route[] = [
   { path: "/explore", label: "Explore", icon: "🔍" },
   { path: "/logs", label: "Logs", icon: "🗒" },
   { path: "/alerts", label: "Alerts", icon: "🔔" },
+  { path: "/snapshots", label: "Snapshots", icon: "📸" },
   { path: "/settings", label: "Settings", icon: "⚙" },
 ];
 

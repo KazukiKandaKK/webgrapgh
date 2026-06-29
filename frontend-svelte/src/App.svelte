@@ -13,6 +13,8 @@
   import Logs from "./views/Logs.svelte";
   import Alerts from "./views/Alerts.svelte";
   import Settings from "./views/Settings.svelte";
+  import Snapshots from "./views/Snapshots.svelte";
+  import SnapshotDetail from "./views/SnapshotDetail.svelte";
 
   // Endpoints come from settings (localStorage override → env default). They are
   // read once here; changing them in Settings requires a reload to rebuild the
@@ -73,6 +75,12 @@
       <Logs />
     {:else if router.path === "/alerts"}
       <Alerts />
+    {:else if router.section === "/snapshots"}
+      {#if router.path === "/snapshots"}
+        <Snapshots />
+      {:else}
+        <SnapshotDetail />
+      {/if}
     {:else if router.path === "/settings"}
       <Settings />
     {:else}
