@@ -110,6 +110,7 @@ func TestPostgresDSN(t *testing.T) {
 		PostgresUser:     "user1",
 		PostgresPassword: "pass1",
 		PostgresDB:       "db1",
+		PostgresSSLMode:  "disable",
 	}
 	want := "host=myhost port=5432 user=user1 password=pass1 dbname=db1 sslmode=disable"
 	got := cfg.PostgresDSN()
