@@ -42,7 +42,13 @@ func CanvasWebSocket(h *hub.Hub, allowedOrigins []string) echo.HandlerFunc {
 			return err
 		}
 		client := hub.NewClient(128)
-		h.Register(client)
+		if err := h.Register(client); err != nil {
+			log.Printf("canvas: rejecting client: %v", err)
+			_ = conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many connections"))
+			_ = conn.Close()
+			return nil
+		}
 		log.Printf("canvas: client connected (total=%d)", h.Count())
 		go canvasReadPump(conn, client, h)
 		go canvasWritePump(conn, client, h)

@@ -1,14 +1,24 @@
 package hub
 
 import (
+	"errors"
 	"sync"
 )
+
+// DefaultMaxClients is the per-hub ceiling for connected WebSocket clients.
+// This prevents a single attacker from exhausting server memory by opening
+// thousands of idle connections.
+const DefaultMaxClients = 512
+
+// ErrHubFull is returned by Register when the hub has reached its capacity.
+var ErrHubFull = errors.New("hub: max clients reached")
 
 // Hub fans out raw byte payloads to every connected WebSocket client.
 // Clients that fall behind are dropped instead of slowing the broadcaster.
 type Hub struct {
-	mu      sync.RWMutex
-	clients map[*Client]struct{}
+	mu         sync.RWMutex
+	clients    map[*Client]struct{}
+	maxClients int
 }
 
 type Client struct {
@@ -17,7 +27,15 @@ type Client struct {
 }
 
 func New() *Hub {
-	return &Hub{clients: make(map[*Client]struct{})}
+	return &Hub{clients: make(map[*Client]struct{}), maxClients: DefaultMaxClients}
+}
+
+// NewWithMax creates a Hub with a custom max-client limit.
+func NewWithMax(max int) *Hub {
+	if max <= 0 {
+		max = DefaultMaxClients
+	}
+	return &Hub{clients: make(map[*Client]struct{}), maxClients: max}
 }
 
 func NewClient(buffer int) *Client {
@@ -38,10 +56,17 @@ func (c *Client) Close() {
 	}
 }
 
-func (h *Hub) Register(c *Client) {
+// Register adds a client to the hub. Returns ErrHubFull if the maximum
+// number of clients has been reached.
+func (h *Hub) Register(c *Client) error {
 	h.mu.Lock()
+	if len(h.clients) >= h.maxClients {
+		h.mu.Unlock()
+		return ErrHubFull
+	}
 	h.clients[c] = struct{}{}
 	h.mu.Unlock()
+	return nil
 }
 
 func (h *Hub) Unregister(c *Client) {

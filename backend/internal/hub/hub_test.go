@@ -17,7 +17,9 @@ func TestRegisterUnregister(t *testing.T) {
 	h := New()
 	c := NewClient(8)
 
-	h.Register(c)
+	if err := h.Register(c); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 	if h.Count() != 1 {
 		t.Errorf("after Register, Count() = %d, want 1", h.Count())
 	}
@@ -31,12 +33,37 @@ func TestRegisterUnregister(t *testing.T) {
 	h.Unregister(c)
 }
 
+func TestRegisterFull(t *testing.T) {
+	h := NewWithMax(2)
+	c1 := NewClient(8)
+	c2 := NewClient(8)
+	c3 := NewClient(8)
+
+	if err := h.Register(c1); err != nil {
+		t.Fatalf("Register c1: %v", err)
+	}
+	if err := h.Register(c2); err != nil {
+		t.Fatalf("Register c2: %v", err)
+	}
+	if err := h.Register(c3); err != ErrHubFull {
+		t.Errorf("Register c3 err = %v, want ErrHubFull", err)
+	}
+	if h.Count() != 2 {
+		t.Errorf("Count() = %d, want 2", h.Count())
+	}
+	// After unregister, should be able to add again.
+	h.Unregister(c1)
+	if err := h.Register(c3); err != nil {
+		t.Errorf("Register c3 after unregister: %v", err)
+	}
+}
+
 func TestBroadcast(t *testing.T) {
 	h := New()
 	c1 := NewClient(8)
 	c2 := NewClient(8)
-	h.Register(c1)
-	h.Register(c2)
+	_ = h.Register(c1)
+	_ = h.Register(c2)
 
 	payload := []byte("hello")
 	h.Broadcast(payload)
@@ -64,8 +91,8 @@ func TestBroadcastExcept(t *testing.T) {
 	h := New()
 	sender := NewClient(8)
 	receiver := NewClient(8)
-	h.Register(sender)
-	h.Register(receiver)
+	_ = h.Register(sender)
+	_ = h.Register(receiver)
 
 	h.BroadcastExcept([]byte("msg"), sender)
 
@@ -92,7 +119,7 @@ func TestBroadcastDropsSlowClient(t *testing.T) {
 	h := New()
 	// Create a client with buffer size 1.
 	slow := NewClient(1)
-	h.Register(slow)
+	_ = h.Register(slow)
 
 	// Fill the buffer.
 	h.Broadcast([]byte("first"))
@@ -133,7 +160,7 @@ func TestConcurrentBroadcast(t *testing.T) {
 	clients := make([]*Client, numClients)
 	for i := range clients {
 		clients[i] = NewClient(64)
-		h.Register(clients[i])
+		_ = h.Register(clients[i])
 	}
 
 	var wg sync.WaitGroup

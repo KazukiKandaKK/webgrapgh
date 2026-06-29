@@ -52,8 +52,38 @@ func Load() Config {
 func (c Config) PostgresDSN() string {
 	return fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		c.PostgresHost, c.PostgresPort, c.PostgresUser, c.PostgresPassword, c.PostgresDB, c.PostgresSSLMode,
+		quoteDSN(c.PostgresHost), c.PostgresPort, quoteDSN(c.PostgresUser),
+		quoteDSN(c.PostgresPassword), quoteDSN(c.PostgresDB), quoteDSN(c.PostgresSSLMode),
 	)
+}
+
+// quoteDSN quotes a libpq keyword=value DSN value. Unquoted values are
+// terminated by whitespace, so a value containing spaces or special chars
+// must be single-quoted with internal single-quotes and backslashes escaped.
+func quoteDSN(v string) string {
+	if v == "" {
+		return "''"
+	}
+	needsQuote := false
+	for _, c := range v {
+		if c == ' ' || c == '\'' || c == '\\' || c == '=' {
+			needsQuote = true
+			break
+		}
+	}
+	if !needsQuote {
+		return v
+	}
+	var b strings.Builder
+	b.WriteByte('\'')
+	for _, c := range v {
+		if c == '\'' || c == '\\' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(c)
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 func getEnv(key, def string) string {

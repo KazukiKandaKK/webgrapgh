@@ -21,6 +21,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"golang.org/x/time/rate"
 )
 
 // The server no longer generates samples itself — that's now cmd/writer's job.
@@ -64,9 +65,27 @@ func main() {
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
+	e.Use(securityHeaders())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.AllowedOrigins,
 		AllowMethods: []string{http.MethodGet, http.MethodOptions},
+	}))
+	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Skipper: func(c echo.Context) bool {
+			// Skip rate limiting for WebSocket upgrades (they have their own
+			// connection-count limit via the hub).
+			return c.Request().Header.Get("Upgrade") == "websocket"
+		},
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
+			middleware.RateLimiterMemoryStoreConfig{
+				Rate:      rate.Limit(20),
+				Burst:     40,
+				ExpiresIn: 3 * time.Minute,
+			},
+		),
+		IdentifierExtractor: func(c echo.Context) (string, error) {
+			return c.RealIP(), nil
+		},
 	}))
 
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
@@ -85,6 +104,9 @@ func main() {
 	canvasH := handler.CanvasWebSocket(canvasHub, cfg.AllowedOrigins)
 	e.GET("/ws/canvas", canvasH)
 	e.GET("/ws/canvas/:room", canvasH)
+
+	// Data retention: periodically purge rows older than 24h.
+	go db.RunRetention(ctx, pool, db.DefaultRetention)
 
 	// /ws is fed by rows the writer process(es) INSERT into `metrics`.
 	go watcher.Run(ctx, pool, metricHub)
@@ -110,6 +132,22 @@ func main() {
 	defer shutdownCancel()
 	if err := e.Shutdown(shutdownCtx); err != nil {
 		log.Printf("shutdown: %v", err)
+	}
+}
+
+// securityHeaders adds standard hardening headers to every HTTP response.
+func securityHeaders() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			h := c.Response().Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+			h.Set("Content-Security-Policy",
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; img-src 'self' data:; font-src 'self'")
+			return next(c)
+		}
 	}
 }
 
