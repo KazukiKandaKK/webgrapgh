@@ -1,6 +1,6 @@
 ---
 name: testing-svelte-dashboard
-description: E2E test the frontend-svelte observability dashboard (Overview/Metrics/Explore/Logs/Alerts/Settings screens, log filters, alerts, shared worker). Use when verifying frontend-svelte UI changes against the live backend.
+description: E2E test the frontend-svelte observability dashboard (Overview/Metrics/Explore/Logs/Alerts/Settings/Containers screens, log filters, alerts, container metrics, shared worker). Use when verifying frontend-svelte UI changes against the live backend.
 ---
 
 # Testing the Svelte dashboard (frontend-svelte)
@@ -13,11 +13,18 @@ Minimal-dependency Svelte 5 dashboard. Single shared Web Worker streams metrics 
 
 1. From repo root: `docker compose up -d --build`. Confirm svelte is served: `curl -s localhost:3000 | grep -i '<title>'` → should contain `(Svelte)`.
 2. Backend + DB on `:8080`. Confirm with `curl -s http://localhost:8080/api/history | head -c 80` and `curl -s http://localhost:8080/api/logs/history | head -c 80`.
-3. Endpoints are read from localStorage settings or env defaults: WS `ws://localhost:8080/ws` (metrics), `ws://localhost:8080/ws/logs` (logs), REST `http://localhost:8080`.
+3. Endpoints are read from localStorage settings or env defaults: WS `ws://localhost:8080/ws` (metrics), `ws://localhost:8080/ws/logs` (logs), `ws://localhost:8080/ws/containers` (container metrics), REST `http://localhost:8080`.
 
-Alternative (faster iteration / if a Docker build misbehaves): local prod build via `cd frontend-svelte && npm run build && npm run preview -- --port 3000` (build runs `svelte-check`). `npm run dev` is a further fallback. The historical `@shared` Docker-context bug was fixed (build context is repo root), so the Docker path should now work.
+Alternative (faster iteration / if a Docker build misbehaves): local prod build via `cd frontend-svelte && npm run build && npm run preview -- --port 3000` (build runs `svelte-check`). `npm run dev` is a further fallback. The historical `@shared` Docker-context bug was fixed (build context is repo root), so the Docker path should now work. NOTE: container metrics need the `collector` service + Docker socket, so use the docker-compose path (not vite preview) when testing the Containers screen.
 
-**WS origin gotcha:** the backend's `AllowedOrigins` defaults to `http://localhost:3000` only (`backend/internal/config`). If you serve the frontend on any other port (e.g. `vite preview --port 3001`), the metrics/logs WS handshake is rejected and the stream pills stay `connecting`/`closed` forever while REST history still works. **Always serve the preview on `:3000`** — if the docker `webgraph-frontend-svelte` container holds the port, `docker stop webgraph-frontend-svelte` first, then restart it when done.
+**WS origin gotcha:** the backend's `AllowedOrigins` defaults to `http://localhost:3000` only (`backend/internal/config`). If you serve the frontend on any other port (e.g. `vite preview --port 3001`), the metrics/logs/containers WS handshake is rejected and the stream pills stay `connecting`/`closed` forever while REST history still works. **Always serve the preview on `:3000`** — if the docker `webgraph-frontend-svelte` container holds the port, `docker stop webgraph-frontend-svelte` first, then restart it when done.
+
+### Container metrics (collector) prerequisites
+The Containers screen is fed by the `collector` compose service, which polls the Docker daemon over the mounted socket (`/var/run/docker.sock:ro`, runs as root) and writes to the `container_metrics` table; the server's `watcher.RunContainers` broadcasts on `/ws/containers`.
+- Confirm it is up and producing: `docker logs webgraph-collector` → `collector: started, docker=unix:///var/run/docker.sock @ 1Hz`.
+- Backend sanity (before touching the UI): `docker exec webgraph-postgres psql -U webgraph -d webgraph -t -c "SELECT count(*), count(DISTINCT container), count(DISTINCT metric) FROM container_metrics;"` (expect distinct containers = number of running services, metrics = 5) and `curl -s 'http://localhost:8080/api/containers/history?minutes=5' | head -c 200` (expect `containers:[...]` + finite `series`).
+- The collector auto-recovers from a cold dependency: if Postgres/Docker is briefly unavailable (e.g. an environment restart), it reconnects on its own (`restart: unless-stopped`). A transient `connection refused` / `context canceled` in early logs is expected and not a failure.
+- Metric names: `cpu_pct`, `mem_bytes`, `mem_pct`, `net_rx_bps`, `net_tx_bps`. Memory subtracts page cache, so it is lower than RSS; CPU% can legitimately read `0.00%` for idle containers — don't treat a single 0 as broken, check that active containers (postgres/backend) show non-zero.
 
 ### Testing a compose default-profile change
 When the change is "make service X the default" (profile assignment swap):
@@ -33,7 +40,7 @@ The worker emits frames on a `setInterval`; `App.svelte` passes `flushHz` (chart
 - Revert the instrumentation + control edit before finishing (`git checkout -- frontend-svelte/src/App.svelte`).
 
 ## Routes
-`#/` Overview · `#/metrics` · `#/explore/<metric>` · `#/logs` · `#/alerts` · `#/settings`
+`#/` Overview · `#/metrics` · `#/explore/<metric>` · `#/logs` · `#/alerts` · `#/settings` · `#/containers`
 
 ## Golden-path tests (record + annotate these)
 
@@ -41,13 +48,14 @@ The worker emits frames on a `setInterval`; `App.svelte` passes `flushHz` (chart
 2. **Alerts** — `#/alerts` lists default rules (cpu>85, errors>5, latency_p99>500) with live "now" values. To force a firing without waiting, ADD a rule whose threshold is trivially breached (e.g. `CPU > 1`): it fires instantly → red FIRING badge, "Firing now" entry, and **sidebar Alerts nav shows a red count pill** (App-level evaluation, visible on every screen). Delete it to confirm firing + badge clear.
 3. **Settings** — `#/settings`. Theme accent buttons recolor the sidebar **live, no reload** (CSS vars). Editing any endpoint field enables the Save button and shows the dirty notice ("未保存の変更があります"); Save reloads the page (rebuilds worker) — avoid clicking it mid-recording. Reset restores env defaults.
 4. **Log filters** — `#/logs` shows full virtualized LogTable (30k events). Toggling a level (e.g. ERROR) switches to "Filtered logs" with a `matched / scanned` counter (e.g. 115/1,000); adding source/search text narrows further (combined AND). Clear (クリア) restores the full table.
-5. **Shared worker** — navigate across all screens; both stream pills stay `open` and log timestamps keep advancing (no reconnect). Confirms the single App-level worker persists.
+5. **Shared worker** — navigate across all screens; both stream pills stay `open` and log timestamps keep advancing (no reconnect). Confirms the single App-level worker persists. NOTE: the Containers screen uses its OWN WS (`/ws/containers`) via a separate store (`lib/containers.svelte.ts`), not the shared worker — its header shows an independent `stream open/closed` state.
+6. **Containers** — `#/containers` (sidebar 📦). Header reads `N containers · live Docker metrics · stream open`. One card per running container (font-mono name), each with 5 cells: CPU, Memory, Memory %, Net In, Net Out + sparklines. Adversarial checks (a broken impl looks different): (a) values are **distinct across containers** (e.g. postgres ~110+ MiB vs writer ~7 MiB) — proves per-container dimension, not one shared number; (b) values **update at ~1Hz** while the header stays `open` (read the DOM twice a few seconds apart and confirm e.g. a Net In or Memory value changed) — proves the live WS, not a frozen REST bootstrap; (c) real units render (`%`, `MiB`, `KiB/s`), no `–`/`NaN` on active containers. If header shows `0 containers` / empty-state "No container metrics yet", the collector/socket is broken — check `docker logs webgraph-collector`.
 
 ## Tips
 - Backend log generator produces varied levels (DEBUG/INFO/WARN/ERROR) and sources (api/auth/cache/ingest/queue/scheduler/worker) plus recognizable messages like "auth failed", "connection refused", "panic recovered" — handy stable search terms.
-- The page DOM is returned with each computer screenshot; use it to read exact counts/stats/URLs rather than eyeballing.
+- The page DOM is returned with each computer screenshot; use it to read exact counts/stats/URLs rather than eyeballing. This is the easiest way to capture before/after values for the Containers live-update check.
 - Maximize the browser before recording (`wmctrl -r :ACTIVE: -b add,maximized_vert,maximized_horz`).
 - Clean up test mutations (delete added alert rules, Reset settings) so localStorage isn't left dirty for the next run.
 
 ## Devin Secrets Needed
-None — backend is local, no auth.
+None — backend is local, no auth. Container metrics need the host Docker socket mounted into the `collector` service (already wired in docker-compose.yml); no credentials.
