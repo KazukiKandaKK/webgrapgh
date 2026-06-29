@@ -26,6 +26,30 @@ export type WireSample = {
   v: Record<string, number>;
 };
 
+// ---------- Container metrics ----------
+
+/** Metric keys emitted per container by cmd/collector (see dockerstats). */
+export const CONTAINER_METRICS = [
+  "cpu_pct",
+  "mem_bytes",
+  "mem_pct",
+  "net_rx_bps",
+  "net_tx_bps",
+] as const;
+export type ContainerMetric = (typeof CONTAINER_METRICS)[number];
+
+/** One (container, metric, value) datum on the /ws/containers wire. */
+export type ContainerWireRow = { c: string; m: string; v: number };
+
+/** WebSocket frame from /ws/containers: all rows sharing a timestamp. */
+export type ContainerWireFrame = { t: number; rows: ContainerWireRow[] };
+
+/** REST /api/containers/history response shape. */
+export type ContainersHistoryResponse = {
+  containers: string[];
+  series: Record<string, Record<string, { t: number[]; v: number[] }>>;
+};
+
 /** Single log event — matches Go's logs.Event JSON shape. */
 export type LogEvent = {
   id: number;

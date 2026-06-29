@@ -60,11 +60,14 @@ docker compose --profile solid up -d frontend-solid  # SolidJS に切り替え
 ├── .env.example                # DB 接続情報 / ポート / 配信レート
 ├── backend/                    # Go (Echo) サーバ
 │   ├── cmd/server/main.go
+│   ├── cmd/collector/main.go   # コンテナメトリクス収集（Docker daemon）
 │   └── internal/
 │       ├── config/             # env 読み込み
 │       ├── db/                 # 接続・スキーマ・シード
-│       ├── handler/            # /api/history, /ws
+│       ├── dockerstats/        # Docker Engine API クライアント + CPU/mem/net 算出
+│       ├── handler/            # /api/history, /api/containers/history, /ws
 │       ├── hub/                # WS 接続管理 & ブロードキャスト
+│       ├── watcher/            # metrics / container_metrics の LISTEN/NOTIFY
 │       └── metrics/            # ダミーメトリクス生成器
 ├── frontend-svelte/            # Svelte 5 + Vite（既定フロントエンド）
 │   └── src/                    # App.svelte / views / components / lib
@@ -180,6 +183,49 @@ cd frontend && npm install && npm run dev
 ```
 
 `LOG_PUSH_HZ` (default 30) で生成頻度を制御。
+
+### コンテナメトリクス（任意の稼働コンテナを計測）
+
+外部 SaaS（Datadog 等）を使わず、このリポジトリ内の `cmd/collector` が Docker
+Engine API を `/var/run/docker.sock` 経由で叩いて、**稼働中の全コンテナ**を自動検出し
+メトリクスを収集します（標準ライブラリのみ・Docker SDK 依存なし）。算出する指標は
+`docker stats` 相当: CPU%（`cpu_delta / system_delta × online_cpus × 100`）、メモリ
+使用量/使用率（page cache を除外）、ネットワーク送受信スループット（bytes/s）。
+
+```
+cmd/collector  →  container_metrics へ INSERT ; NOTIFY container_metrics_new
+watcher        →  LISTEN → 新規行を取得 → /ws/containers へブロードキャスト
+frontend       →  Containers 画面（#/containers）でコンテナ別にライブ表示
+```
+
+既定の `docker compose up` で `collector` サービスが起動します（ソケットを read-only
+でマウント）。収集頻度は `COLLECT_HZ`（default 1）で制御。
+
+#### `GET /api/containers/history?minutes=15&max_points=240`
+
+```json
+{
+  "containers": ["webgraph-backend", "webgraph-postgres"],
+  "series": {
+    "webgraph-backend": {
+      "cpu_pct":    { "t": [...unixMs], "v": [...float64] },
+      "mem_bytes":  { "t": [...],       "v": [...] },
+      "net_rx_bps": { "t": [...],       "v": [...] }
+    }
+  }
+}
+```
+
+#### `WS /ws/containers`
+
+サーバ → クライアント（同一タイムスタンプの行をまとめて配信）:
+
+```json
+{ "t": 1718870000123, "rows": [
+  { "c": "webgraph-backend", "m": "cpu_pct", "v": 3.7 },
+  { "c": "webgraph-backend", "m": "mem_bytes", "v": 31457280 }
+] }
+```
 
 ## なぜ速いのか
 

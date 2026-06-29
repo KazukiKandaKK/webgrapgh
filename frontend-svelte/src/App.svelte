@@ -8,6 +8,7 @@
   import Sidebar from "./components/Sidebar.svelte";
   import Overview from "./views/Overview.svelte";
   import Metrics from "./views/Metrics.svelte";
+  import Containers from "./views/Containers.svelte";
   import Explore from "./views/Explore.svelte";
   import Logs from "./views/Logs.svelte";
   import Alerts from "./views/Alerts.svelte";
@@ -64,6 +65,8 @@
   <main class="flex flex-1 flex-col">
     {#if router.path === "/metrics"}
       <Metrics />
+    {:else if router.path === "/containers"}
+      <Containers />
     {:else if router.section === "/explore"}
       <Explore />
     {:else if router.path === "/logs"}

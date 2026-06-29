@@ -1,4 +1,10 @@
-import { formatLogTime, hexToRgba, levelClass } from "@shared/utils";
+import {
+  formatBps,
+  formatBytes,
+  formatLogTime,
+  hexToRgba,
+  levelClass,
+} from "@shared/utils";
 import { describe, expect, it } from "vitest";
 
 describe("hexToRgba", () => {
@@ -39,5 +45,28 @@ describe("formatLogTime", () => {
   it("renders a placeholder for non-positive timestamps", () => {
     expect(formatLogTime(0)).toBe("--:--:--.---");
     expect(formatLogTime(-5)).toBe("--:--:--.---");
+  });
+});
+
+describe("formatBytes", () => {
+  it("scales through binary units", () => {
+    expect(formatBytes(512)).toBe("512 B");
+    expect(formatBytes(1024)).toBe("1.0 KiB");
+    expect(formatBytes(1536)).toBe("1.5 KiB");
+    expect(formatBytes(1024 * 1024)).toBe("1.0 MiB");
+    expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3.0 GiB");
+  });
+
+  it("clamps non-positive / non-finite to 0 B", () => {
+    expect(formatBytes(0)).toBe("0 B");
+    expect(formatBytes(-10)).toBe("0 B");
+    expect(formatBytes(Number.NaN)).toBe("0 B");
+  });
+});
+
+describe("formatBps", () => {
+  it("suffixes a throughput with /s", () => {
+    expect(formatBps(2048)).toBe("2.0 KiB/s");
+    expect(formatBps(0)).toBe("0 B/s");
   });
 });

@@ -10,6 +10,7 @@ export type Route = {
 export const ROUTES: Route[] = [
   { path: "/", label: "Overview", icon: "▦" },
   { path: "/metrics", label: "Metrics", icon: "📈" },
+  { path: "/containers", label: "Containers", icon: "📦" },
   { path: "/explore", label: "Explore", icon: "🔍" },
   { path: "/logs", label: "Logs", icon: "🗒" },
   { path: "/alerts", label: "Alerts", icon: "🔔" },
