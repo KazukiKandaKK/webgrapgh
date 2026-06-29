@@ -65,6 +65,36 @@ services:
       PUSH_HZ: ${PUSH_HZ:-20}
     entrypoint: ["/app/writer"]
 
+  # Container-metrics producer. Polls the Docker daemon for every running
+  # container's stats (CPU%, memory, network throughput), inserts them into the
+  # container_metrics table, and issues NOTIFY container_metrics_new; the
+  # server's container watcher LISTENs and broadcasts to /ws/containers.
+  collector:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: webgrapgh-backend
+    container_name: webgraph-collector
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-webgraph}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-webgraph}
+      POSTGRES_DB: ${POSTGRES_DB:-webgraph}
+      DOCKER_HOST: unix:///var/run/docker.sock
+      COLLECT_HZ: ${COLLECT_HZ:-1}
+    # Read-only mount of the host Docker socket so the collector can enumerate
+    # and measure arbitrary running containers. Runs as root because the socket
+    # is group-owned by `docker` on the host.
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    entrypoint: ["/app/collector"]
+
   # One-shot bulk seeder. Lives in the `seed` profile so it never runs as part
   # of a plain `docker compose up`. Trigger explicitly:
   #

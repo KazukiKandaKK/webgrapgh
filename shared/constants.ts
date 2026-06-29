@@ -1,4 +1,4 @@
-import type { MetricName } from "./types";
+import type { ContainerMetric, MetricName } from "./types";
 
 // ---------- Metric metadata (used by DashboardGrid in both frontends) ----------
 
@@ -51,6 +51,26 @@ export const METRIC_META: Record<MetricName, MetricMeta> = {
     unit: "items",
     yRange: [0, null],
   },
+};
+
+// ---------- Container metric metadata (used by the Containers screen) ----------
+
+export type ContainerMetricMeta = {
+  label: string;
+  color: string;
+  /** How to render a value: percent, bytes, or a bytes/sec throughput. */
+  format: "pct" | "bytes" | "bps";
+};
+
+export const CONTAINER_METRIC_META: Record<
+  ContainerMetric,
+  ContainerMetricMeta
+> = {
+  cpu_pct: { label: "CPU", color: "#38bdf8", format: "pct" },
+  mem_bytes: { label: "Memory", color: "#a78bfa", format: "bytes" },
+  mem_pct: { label: "Memory %", color: "#c084fc", format: "pct" },
+  net_rx_bps: { label: "Net In", color: "#34d399", format: "bps" },
+  net_tx_bps: { label: "Net Out", color: "#fbbf24", format: "bps" },
 };
 
 // ---------- Time range presets (used by TimeRangeControls in both frontends) ----------

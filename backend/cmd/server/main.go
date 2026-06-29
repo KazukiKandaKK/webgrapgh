@@ -25,10 +25,10 @@ import (
 
 // The server no longer generates samples itself — that's now cmd/writer's job.
 // The server only:
-//   1. serves REST/WS endpoints
-//   2. watches PostgreSQL for new rows (LISTEN metrics_new) and broadcasts
-//      them on /ws
-//   3. generates and broadcasts synthetic log events (in-memory; no DB)
+//  1. serves REST/WS endpoints
+//  2. watches PostgreSQL for new rows (LISTEN metrics_new) and broadcasts
+//     them on /ws
+//  3. generates and broadcasts synthetic log events (in-memory; no DB)
 func main() {
 	_ = godotenv.Load(".env")
 	_ = godotenv.Load("../.env")
@@ -54,6 +54,7 @@ func main() {
 	metricHub := hub.New()
 	logHub := hub.New()
 	canvasHub := hub.New()
+	containerHub := hub.New()
 
 	logStore := logs.NewStore(30000)
 	logs.SeedHistory(logStore, time.Hour, 5000)
@@ -71,8 +72,11 @@ func main() {
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	e.GET("/api/history", handler.History(pool))
 	e.GET("/api/logs/history", handler.LogsHistory(logStore))
+	e.GET("/api/containers/history", handler.ContainersHistory(pool))
 	e.GET("/ws", handler.WebSocket(metricHub, cfg.AllowedOrigins))
 	e.GET("/ws/logs", handler.WebSocket(logHub, cfg.AllowedOrigins))
+	// Fed by container_metrics rows that cmd/collector INSERTs.
+	e.GET("/ws/containers", handler.WebSocket(containerHub, cfg.AllowedOrigins))
 	// Yjs CRDT relay for the whiteboard. Server is stateless — peers sync
 	// each other via the y-websocket protocol; we only fan out binary frames.
 	// y-websocket appends the room name as a path segment (/ws/canvas/<room>),
@@ -84,6 +88,8 @@ func main() {
 
 	// /ws is fed by rows the writer process(es) INSERT into `metrics`.
 	go watcher.Run(ctx, pool, metricHub)
+	// /ws/containers is fed by rows cmd/collector INSERTs into `container_metrics`.
+	go watcher.RunContainers(ctx, pool, containerHub)
 	// Logs are in-memory only; no DB writer is involved.
 	go runLogBroadcaster(ctx, logHub, logStore, cfg.LogPushHz)
 

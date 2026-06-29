@@ -16,11 +16,19 @@ type Config struct {
 	PostgresDB       string
 	PostgresSSLMode  string
 
-	BackendPort          int
-	SeedPointsPerMetric  int
-	PushHz               int
-	LogPushHz            int
-	AllowedOrigins       []string
+	BackendPort         int
+	SeedPointsPerMetric int
+	PushHz              int
+	LogPushHz           int
+	AllowedOrigins      []string
+
+	// DockerHost is the Docker Engine API endpoint used by cmd/collector.
+	// Supports unix sockets ("unix:///var/run/docker.sock") and TCP
+	// ("tcp://host:2375" / "http://host:2375").
+	DockerHost string
+	// CollectHz is how many times per second cmd/collector polls container
+	// stats. Container stats are coarse (1s cgroup accounting) so 1 is plenty.
+	CollectHz int
 }
 
 func Load() Config {
@@ -36,6 +44,8 @@ func Load() Config {
 		PushHz:              getEnvInt("PUSH_HZ", 20),
 		LogPushHz:           getEnvInt("LOG_PUSH_HZ", 30),
 		AllowedOrigins:      splitCSV(getEnv("ALLOWED_ORIGINS", "http://localhost:3000")),
+		DockerHost:          getEnv("DOCKER_HOST", "unix:///var/run/docker.sock"),
+		CollectHz:           getEnvInt("COLLECT_HZ", 1),
 	}
 }
 
