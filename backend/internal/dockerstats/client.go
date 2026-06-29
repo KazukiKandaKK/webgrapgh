@@ -9,12 +9,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
+
+// maxResponseBytes caps the size of JSON bodies read from the Docker daemon to
+// prevent a malicious or misbehaving daemon from exhausting collector memory.
+const maxResponseBytes = 16 << 20 // 16 MiB
 
 // Client issues requests against the Docker Engine API.
 type Client struct {
@@ -91,7 +96,8 @@ func (c *Client) List(ctx context.Context) ([]Container, error) {
 		return nil, fmt.Errorf("list containers: status %d", resp.StatusCode)
 	}
 	var out []Container
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	lr := io.LimitReader(resp.Body, maxResponseBytes)
+	if err := json.NewDecoder(lr).Decode(&out); err != nil {
 		return nil, fmt.Errorf("decode container list: %w", err)
 	}
 	return out, nil
@@ -102,7 +108,7 @@ func (c *Client) List(ctx context.Context) ([]Container, error) {
 // precpu_stats in the response, so CPU% is computable from this one call.
 func (c *Client) Stats(ctx context.Context, id string) (*StatsJSON, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.baseURL+"/containers/"+id+"/stats?stream=false", nil)
+		c.baseURL+"/containers/"+url.PathEscape(id)+"/stats?stream=false", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +121,8 @@ func (c *Client) Stats(ctx context.Context, id string) (*StatsJSON, error) {
 		return nil, fmt.Errorf("stats %s: status %d", id, resp.StatusCode)
 	}
 	var s StatsJSON
-	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+	lr := io.LimitReader(resp.Body, maxResponseBytes)
+	if err := json.NewDecoder(lr).Decode(&s); err != nil {
 		return nil, fmt.Errorf("decode stats %s: %w", id, err)
 	}
 	return &s, nil

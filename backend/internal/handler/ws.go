@@ -44,7 +44,13 @@ func WebSocket(h *hub.Hub, allowedOrigins []string) echo.HandlerFunc {
 			return err
 		}
 		client := hub.NewClient(sendBuffer)
-		h.Register(client)
+		if err := h.Register(client); err != nil {
+			log.Printf("ws: rejecting client: %v", err)
+			_ = conn.WriteMessage(websocket.CloseMessage,
+				websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "too many connections"))
+			_ = conn.Close()
+			return nil
+		}
 		log.Printf("ws: client connected (total=%d)", h.Count())
 
 		go readPump(conn, client, h)

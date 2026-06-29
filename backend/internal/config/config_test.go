@@ -119,6 +119,41 @@ func TestPostgresDSN(t *testing.T) {
 	}
 }
 
+func TestPostgresDSN_Injection(t *testing.T) {
+	cfg := Config{
+		PostgresHost:     "evil sslmode=allow",
+		PostgresPort:     5432,
+		PostgresUser:     "user1",
+		PostgresPassword: "p'ass",
+		PostgresDB:       "db1",
+		PostgresSSLMode:  "disable",
+	}
+	got := cfg.PostgresDSN()
+	want := `host='evil sslmode=allow' port=5432 user=user1 password='p\'ass' dbname=db1 sslmode=disable`
+	if got != want {
+		t.Errorf("PostgresDSN() = %q, want %q", got, want)
+	}
+}
+
+func TestQuoteDSN(t *testing.T) {
+	tests := []struct {
+		in, want string
+	}{
+		{"simple", "simple"},
+		{"", "''"},
+		{"has space", "'has space'"},
+		{"has'quote", `'has\'quote'`},
+		{`back\slash`, `'back\\slash'`},
+		{"key=val", "'key=val'"},
+	}
+	for _, tt := range tests {
+		got := quoteDSN(tt.in)
+		if got != tt.want {
+			t.Errorf("quoteDSN(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestGetEnvInt_InvalidFallsBackToDefault(t *testing.T) {
 	t.Setenv("TEST_INT_KEY", "notanumber")
 	got := getEnvInt("TEST_INT_KEY", 42)
