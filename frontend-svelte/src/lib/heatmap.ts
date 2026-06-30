@@ -76,19 +76,22 @@ export function valueBounds(
     return [metaMin ?? 0, metaMax ?? 1];
   }
 
-  let lo = metaMin ?? Infinity;
-  let hi = metaMax ?? -Infinity;
+  let lo = metaMin ?? Number.POSITIVE_INFINITY;
+  let hi = metaMax ?? Number.NEGATIVE_INFINITY;
 
-  if (!isFinite(lo) || !isFinite(hi)) {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
     for (let i = 0; i < v.length; i++) {
       if (v[i] < lo) lo = v[i];
       if (v[i] > hi) hi = v[i];
     }
   }
 
-  if (!isFinite(lo)) lo = 0;
-  if (!isFinite(hi)) hi = lo + 1;
-  if (hi === lo) { lo -= 0.5; hi += 0.5; }
+  if (!Number.isFinite(lo)) lo = 0;
+  if (!Number.isFinite(hi)) hi = lo + 1;
+  if (hi === lo) {
+    lo -= 0.5;
+    hi += 0.5;
+  }
 
   return [lo, hi];
 }

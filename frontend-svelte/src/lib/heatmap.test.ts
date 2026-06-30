@@ -1,6 +1,12 @@
-import { describe, it, expect } from "vitest";
 import fc from "fast-check";
-import { bucketize, interpolateColor, valueBounds, HEATMAP_COLS, HEATMAP_BUCKETS } from "./heatmap";
+import { describe, expect, it } from "vitest";
+import {
+  HEATMAP_BUCKETS,
+  HEATMAP_COLS,
+  bucketize,
+  interpolateColor,
+  valueBounds,
+} from "./heatmap";
 
 // ─── PBT: bucketize ───────────────────────────────────────────────────────────
 
@@ -8,13 +14,25 @@ describe("bucketize — properties", () => {
   it("total count across all buckets equals input length", () => {
     fc.assert(
       fc.property(
-        fc.array(fc.float({ min: 0, max: 100, noNaN: true }), { minLength: 1, maxLength: 500 }),
+        fc.array(fc.float({ min: 0, max: 100, noNaN: true }), {
+          minLength: 1,
+          maxLength: 500,
+        }),
         (vals) => {
           const t = Float64Array.from(vals.map((_, i) => i));
           const v = Float64Array.from(vals);
           // bucketize normalizes per column, so we need to test pre-normalisation logic
           // Instead verify: all output values in [0, 1]
-          const grid = bucketize(t, v, 0, vals.length - 1, HEATMAP_COLS, 0, 100, HEATMAP_BUCKETS);
+          const grid = bucketize(
+            t,
+            v,
+            0,
+            vals.length - 1,
+            HEATMAP_COLS,
+            0,
+            100,
+            HEATMAP_BUCKETS,
+          );
           return Array.from(grid).every((d) => d >= 0 && d <= 1);
         },
       ),
@@ -28,8 +46,14 @@ describe("bucketize — properties", () => {
         fc.integer({ min: 1, max: 20 }),
         (cols, bkts) => {
           const grid = bucketize(
-            new Float64Array(0), new Float64Array(0),
-            0, 100, cols, 0, 1, bkts,
+            new Float64Array(0),
+            new Float64Array(0),
+            0,
+            100,
+            cols,
+            0,
+            1,
+            bkts,
           );
           return grid.every((d) => d === 0);
         },
@@ -39,15 +63,12 @@ describe("bucketize — properties", () => {
 
   it("tMax <= tMin returns all-zero grid (degenerate time range)", () => {
     fc.assert(
-      fc.property(
-        fc.float({ min: 0, max: 1000, noNaN: true }),
-        (tVal) => {
-          const t = Float64Array.from([tVal, tVal]);
-          const v = Float64Array.from([42, 43]);
-          const grid = bucketize(t, v, tVal, tVal, 10, 0, 100, 10);
-          return grid.every((d) => d === 0);
-        },
-      ),
+      fc.property(fc.float({ min: 0, max: 1000, noNaN: true }), (tVal) => {
+        const t = Float64Array.from([tVal, tVal]);
+        const v = Float64Array.from([42, 43]);
+        const grid = bucketize(t, v, tVal, tVal, 10, 0, 100, 10);
+        return grid.every((d) => d === 0);
+      }),
     );
   });
 
@@ -58,8 +79,19 @@ describe("bucketize — properties", () => {
         fc.float({ min: 10, max: 90, noNaN: true }),
         (n, fixedVal) => {
           const t = Float64Array.from(Array.from({ length: n }, (_, i) => i));
-          const v = Float64Array.from(Array.from({ length: n }, () => fixedVal));
-          const grid = bucketize(t, v, 0, n - 1, HEATMAP_COLS, 0, 100, HEATMAP_BUCKETS);
+          const v = Float64Array.from(
+            Array.from({ length: n }, () => fixedVal),
+          );
+          const grid = bucketize(
+            t,
+            v,
+            0,
+            n - 1,
+            HEATMAP_COLS,
+            0,
+            100,
+            HEATMAP_BUCKETS,
+          );
           // Each value in [0, 1]
           return Array.from(grid).every((d) => d >= 0 && d <= 1);
         },
@@ -83,9 +115,21 @@ describe("bucketize — unit", () => {
     const t = Float64Array.from(Array.from({ length: n }, (_, i) => i));
     // v=0 → bkt = floor(0/100 * 20) = 0 (bucket 0)
     const v = Float64Array.from(new Array(n).fill(0));
-    const grid = bucketize(t, v, 0, n - 1, HEATMAP_COLS, 0, 100, HEATMAP_BUCKETS);
+    const grid = bucketize(
+      t,
+      v,
+      0,
+      n - 1,
+      HEATMAP_COLS,
+      0,
+      100,
+      HEATMAP_BUCKETS,
+    );
     // Each column with data has exactly one point → density = 1 in bucket 0
-    const bucket0Cells = Array.from({ length: HEATMAP_COLS }, (_, col) => grid[col * HEATMAP_BUCKETS + 0]);
+    const bucket0Cells = Array.from(
+      { length: HEATMAP_COLS },
+      (_, col) => grid[col * HEATMAP_BUCKETS + 0],
+    );
     expect(bucket0Cells.some((d) => d === 1)).toBe(true);
   });
 
@@ -96,7 +140,7 @@ describe("bucketize — unit", () => {
     const bkts = 4;
     const grid = bucketize(t, v, 0, 1, cols, 0, 100, bkts);
     // Both values land in valid buckets (no out-of-bounds → no undefined)
-    expect(Array.from(grid).every((d) => !isNaN(d))).toBe(true);
+    expect(Array.from(grid).every((d) => !Number.isNaN(d))).toBe(true);
   });
 });
 
@@ -105,13 +149,10 @@ describe("bucketize — unit", () => {
 describe("interpolateColor — properties", () => {
   it("density ∈ [0,1] always produces a valid rgba() string", () => {
     fc.assert(
-      fc.property(
-        fc.float({ min: 0, max: 1, noNaN: true }),
-        (density) => {
-          const result = interpolateColor("#38bdf8", density);
-          return result.startsWith("rgba(");
-        },
-      ),
+      fc.property(fc.float({ min: 0, max: 1, noNaN: true }), (density) => {
+        const result = interpolateColor("#38bdf8", density);
+        return result.startsWith("rgba(");
+      }),
     );
   });
 
