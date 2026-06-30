@@ -15,6 +15,7 @@
   import Settings from "./views/Settings.svelte";
   import Snapshots from "./views/Snapshots.svelte";
   import SnapshotDetail from "./views/SnapshotDetail.svelte";
+  import Heatmap from "./views/Heatmap.svelte";
 
   // Endpoints come from settings (localStorage override → env default). They are
   // read once here; changing them in Settings requires a reload to rebuild the
@@ -81,6 +82,8 @@
       {:else}
         <SnapshotDetail />
       {/if}
+    {:else if router.path === "/heatmap"}
+      <Heatmap />
     {:else if router.path === "/settings"}
       <Settings />
     {:else}
