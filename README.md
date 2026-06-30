@@ -43,6 +43,9 @@
 
 `frontend-svelte` は「依存関係を最小化したチャレンジ」版で、ランタイム依存は描画ライブラリ `uplot` だけ。Svelte コンパイラが UI を素の DOM 操作へ変換するためフレームワーク自体のランタイムが極小になり、ログテーブルの仮想スクロールも外部ライブラリを使わず ~30 行で実装しています。設計上の絶対原則（Worker 完結 / uPlot のみ / `setData` 直叩き / UI シェルのみ）はそのまま踏襲。
 
+> **Note:** 以下の機能は `frontend-svelte` のみに実装されています（Solid / Next 版は基本的なダッシュボード機能のみ）:
+> Explore（単一メトリクスの大チャート + min/max/avg/p95）、Alerts（閾値ルール + 発火中アラート）、Settings（テーマ・エンドポイント設定）、ログフィルタ（level/source/検索）、Containers（Docker コンテナメトリクス）、Snapshots（メトリクスのスナップショット保存 + スレッドコメント）。
+
 既定では `frontend-svelte` がプロファイル無しで起動します。いずれも host 側 :3000 を使うため、別実装に切り替える前に既定の `frontend-svelte` を停止してください:
 
 ```bash

@@ -35,8 +35,8 @@ type Broadcaster interface {
 // connection failure with exponential backoff capped at 10s.
 func Run(ctx context.Context, pool *pgxpool.Pool, h Broadcaster) {
 	var lastID int64
-	if err := pool.QueryRow(ctx, `SELECT COALESCE(MAX(id), 0) FROM metrics`).Scan(&lastID); err != nil {
-		log.Fatalf("watcher: init lastID: %v", err)
+	if err := initLastID(ctx, pool, `SELECT COALESCE(MAX(id), 0) FROM metrics`, &lastID); err != nil {
+		log.Printf("watcher: init lastID failed, will retry: %v", err)
 	}
 	log.Printf("watcher: started, LISTEN %s, lastID=%d", Channel, lastID)
 
@@ -147,4 +147,29 @@ func drain(ctx context.Context, pool *pgxpool.Pool, h Broadcaster, lastID *int64
 	}
 	*lastID = maxID
 	return nil
+}
+
+// initLastID tries to read the current MAX(id) with exponential backoff so a
+// transient DB failure at startup doesn't kill the process.
+func initLastID(ctx context.Context, pool *pgxpool.Pool, query string, out *int64) error {
+	backoff := time.Second
+	for attempts := 0; attempts < 5; attempts++ {
+		if err := pool.QueryRow(ctx, query).Scan(out); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			log.Printf("watcher: initLastID attempt %d: %v", attempts+1, err)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+			if backoff < 10*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("initLastID: all retries exhausted")
 }

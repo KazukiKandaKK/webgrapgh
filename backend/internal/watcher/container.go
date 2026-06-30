@@ -32,8 +32,8 @@ type containerFrame struct {
 // broadcasts one frame per timestamp to the container WS hub.
 func RunContainers(ctx context.Context, pool *pgxpool.Pool, h Broadcaster) {
 	var lastID int64
-	if err := pool.QueryRow(ctx, `SELECT COALESCE(MAX(id), 0) FROM container_metrics`).Scan(&lastID); err != nil {
-		log.Fatalf("container watcher: init lastID: %v", err)
+	if err := initLastID(ctx, pool, `SELECT COALESCE(MAX(id), 0) FROM container_metrics`, &lastID); err != nil {
+		log.Printf("container watcher: init lastID failed, will retry: %v", err)
 	}
 	log.Printf("container watcher: started, LISTEN %s, lastID=%d", ContainerChannel, lastID)
 
