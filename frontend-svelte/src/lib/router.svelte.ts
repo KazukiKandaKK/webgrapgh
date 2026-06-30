@@ -8,15 +8,15 @@ export type Route = {
 };
 
 export const ROUTES: Route[] = [
-  { path: "/", label: "Overview", icon: "▦" },
-  { path: "/metrics", label: "Metrics", icon: "📈" },
-  { path: "/containers", label: "Containers", icon: "📦" },
-  { path: "/explore", label: "Explore", icon: "🔍" },
-  { path: "/logs", label: "Logs", icon: "🗒" },
-  { path: "/alerts", label: "Alerts", icon: "🔔" },
-  { path: "/snapshots", label: "Snapshots", icon: "📸" },
-  { path: "/heatmap", label: "Heatmap", icon: "🌡" },
-  { path: "/settings", label: "Settings", icon: "⚙" },
+  { path: "/", label: "Overview", icon: "overview" },
+  { path: "/metrics", label: "Metrics", icon: "metrics" },
+  { path: "/containers", label: "Containers", icon: "containers" },
+  { path: "/explore", label: "Explore", icon: "explore" },
+  { path: "/logs", label: "Logs", icon: "logs" },
+  { path: "/alerts", label: "Alerts", icon: "alerts" },
+  { path: "/snapshots", label: "Snapshots", icon: "snapshots" },
+  { path: "/heatmap", label: "Heatmap", icon: "heatmap" },
+  { path: "/settings", label: "Settings", icon: "settings" },
 ];
 
 function parseHash(): string {

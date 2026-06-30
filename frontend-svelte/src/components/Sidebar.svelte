@@ -3,6 +3,7 @@
   import { ROUTES, router, navigate, isActive } from "../lib/router.svelte";
   import { useWorker } from "../lib/workerController.svelte";
   import { alerts } from "../lib/alerts.svelte";
+  import Icon from "./Icon.svelte";
   import StatusPill from "./StatusPill.svelte";
 
   const controller = useWorker();
@@ -42,7 +43,7 @@
           ? "background-color: var(--accent-soft); color: var(--accent)"
           : ""}
       >
-        <span class="w-4 text-center">{r.icon}</span>
+        <span class="w-4 flex items-center justify-center"><Icon name={r.icon} size={16} /></span>
         <span class="flex-1 text-left">{r.label}</span>
         {#if r.path === "/alerts" && alerts.firingCount > 0}
           <span
