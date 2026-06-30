@@ -17,6 +17,7 @@
     "@sveltejs/vite-plugin-svelte": "4.0.0",
     "@types/node": "20.14.10",
     "autoprefixer": "10.4.20",
+    "fast-check": "^4.8.0",
     "jsdom": "25.0.1",
     "postcss": "8.4.47",
     "svelte": "^5.56.4",

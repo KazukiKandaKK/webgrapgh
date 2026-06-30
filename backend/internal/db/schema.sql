@@ -24,3 +24,25 @@ CREATE INDEX IF NOT EXISTS idx_container_metrics_ts
 
 CREATE INDEX IF NOT EXISTS idx_container_metrics_key_ts
     ON container_metrics (container, metric, ts DESC);
+
+-- Snapshots store a named point-in-time capture of one or more metric series.
+CREATE TABLE IF NOT EXISTS snapshots (
+    id            BIGSERIAL    PRIMARY KEY,
+    name          VARCHAR(255) NOT NULL,
+    metric_names  JSONB        NOT NULL,
+    series_data   JSONB        NOT NULL,
+    range_minutes INT          NOT NULL DEFAULT 60,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- Comments are threaded notes attached to a snapshot.
+CREATE TABLE IF NOT EXISTS snapshot_comments (
+    id          BIGSERIAL    PRIMARY KEY,
+    snapshot_id BIGINT       NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+    author      VARCHAR(255) NOT NULL DEFAULT 'anonymous',
+    body        TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_snapshot_comments_snapshot_ts
+    ON snapshot_comments (snapshot_id, created_at ASC);

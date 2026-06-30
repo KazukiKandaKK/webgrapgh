@@ -56,6 +56,7 @@ func main() {
 	logHub := hub.New()
 	canvasHub := hub.New()
 	containerHub := hub.New()
+	snapshotHub := hub.New()
 
 	logStore := logs.NewStore(30000)
 	logs.SeedHistory(logStore, time.Hour, 5000)
@@ -68,7 +69,7 @@ func main() {
 	e.Use(securityHeaders())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.AllowedOrigins,
-		AllowMethods: []string{http.MethodGet, http.MethodOptions},
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodOptions},
 	}))
 	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
 		Skipper: func(c echo.Context) bool {
@@ -90,6 +91,15 @@ func main() {
 
 	e.GET("/healthz", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
 	e.GET("/api/history", handler.History(pool))
+
+	snaps := e.Group("/api/snapshots")
+	snaps.POST("", handler.CreateSnapshot(pool, snapshotHub))
+	snaps.GET("", handler.ListSnapshots(pool))
+	snaps.GET("/:id", handler.GetSnapshot(pool))
+	snaps.DELETE("/:id", handler.DeleteSnapshot(pool))
+	snaps.POST("/:id/comments", handler.CreateComment(pool, snapshotHub))
+	snaps.GET("/:id/comments", handler.ListComments(pool))
+	e.GET("/ws/snapshots", handler.SnapshotWebSocket(snapshotHub, cfg.AllowedOrigins))
 	e.GET("/api/logs/history", handler.LogsHistory(logStore))
 	e.GET("/api/containers/history", handler.ContainersHistory(pool))
 	e.GET("/ws", handler.WebSocket(metricHub, cfg.AllowedOrigins))
