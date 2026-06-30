@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
 import fc from "fast-check";
+import { describe, expect, it } from "vitest";
 import { extractSnapshotId } from "./snapshots.svelte";
 
 // --- PBT: extractSnapshotId ---
@@ -7,7 +7,7 @@ import { extractSnapshotId } from "./snapshots.svelte";
 describe("extractSnapshotId - properties", () => {
   it("positive integers in /snapshots/:id always parse correctly", () => {
     fc.assert(
-      fc.property(fc.integer({ min: 1, max: 2 ** 31 }), (id) => {
+      fc.property(fc.integer({ min: 1, max: 2 ** 31 }), (id: number) => {
         return extractSnapshotId(`/snapshots/${id}`) === id;
       }),
     );
@@ -15,7 +15,7 @@ describe("extractSnapshotId - properties", () => {
 
   it("zero or negative values always return null", () => {
     fc.assert(
-      fc.property(fc.integer({ min: -1000, max: 0 }), (id) => {
+      fc.property(fc.integer({ min: -1000, max: 0 }), (id: number) => {
         return extractSnapshotId(`/snapshots/${id}`) === null;
       }),
     );
@@ -24,8 +24,10 @@ describe("extractSnapshotId - properties", () => {
   it("non-numeric path segments always return null", () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1 }).filter((s) => isNaN(parseInt(s, 10))),
-        (s) => {
+        fc
+          .string({ minLength: 1 })
+          .filter((s: string) => Number.isNaN(Number.parseInt(s, 10))),
+        (s: string) => {
           return extractSnapshotId(`/snapshots/${s}`) === null;
         },
       ),
@@ -64,9 +66,11 @@ describe("ms to seconds conversion - properties", () => {
     fc.assert(
       fc.property(
         fc.array(fc.integer({ min: 0, max: 2 ** 53 }), { maxLength: 100 }),
-        (timestamps) => {
-          const seconds = timestamps.map((ms) => ms / 1000);
-          return seconds.every((s, i) => s === timestamps[i] / 1000);
+        (timestamps: number[]) => {
+          const seconds = timestamps.map((ms: number) => ms / 1000);
+          return seconds.every(
+            (s: number, i: number) => s === timestamps[i] / 1000,
+          );
         },
       ),
     );
@@ -115,8 +119,8 @@ describe("author trim logic - unit", () => {
   it("PBT: any non-blank string is preserved after trim", () => {
     fc.assert(
       fc.property(
-        fc.string({ minLength: 1 }).filter((s) => s.trim() !== ""),
-        (name) => {
+        fc.string({ minLength: 1 }).filter((s: string) => s.trim() !== ""),
+        (name: string) => {
           return normalizeAuthor(name) === name.trim();
         },
       ),

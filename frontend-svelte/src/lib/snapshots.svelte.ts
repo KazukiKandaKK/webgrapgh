@@ -46,7 +46,7 @@ class SnapshotStore {
 
   private _ws: WebSocket | null = null;
   private _wsSnapshotId: number | null = null;
-  private _commentsOffset: number = 0;
+  private _commentsOffset = 0;
 
   async loadSnapshots(apiBase: string): Promise<void> {
     this.loading = true;
@@ -55,7 +55,8 @@ class SnapshotStore {
       const res = await fetch(`${apiBase}/api/snapshots`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        this.error = (body as { message?: string }).message ?? `Error ${res.status}`;
+        this.error =
+          (body as { message?: string }).message ?? `Error ${res.status}`;
         return;
       }
       this.snapshots = await res.json();
@@ -73,7 +74,8 @@ class SnapshotStore {
       const res = await fetch(`${apiBase}/api/snapshots/${id}`);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        this.error = (body as { message?: string }).message ?? `Error ${res.status}`;
+        this.error =
+          (body as { message?: string }).message ?? `Error ${res.status}`;
         return;
       }
       this.current = await res.json();
@@ -97,11 +99,17 @@ class SnapshotStore {
       const res = await fetch(`${apiBase}/api/snapshots`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, metric_names: metricNames, series_data: seriesData, range_minutes: rangeMinutes }),
+        body: JSON.stringify({
+          name,
+          metric_names: metricNames,
+          series_data: seriesData,
+          range_minutes: rangeMinutes,
+        }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        this.error = (body as { message?: string }).message ?? `Error ${res.status}`;
+        this.error =
+          (body as { message?: string }).message ?? `Error ${res.status}`;
         return null;
       }
       const snap: Snapshot = await res.json();
@@ -116,7 +124,9 @@ class SnapshotStore {
 
   async deleteSnapshot(apiBase: string, id: number): Promise<boolean> {
     try {
-      const res = await fetch(`${apiBase}/api/snapshots/${id}`, { method: "DELETE" });
+      const res = await fetch(`${apiBase}/api/snapshots/${id}`, {
+        method: "DELETE",
+      });
       if (!res.ok) return false;
       this.snapshots = this.snapshots.filter((s) => s.id !== id);
       if (this.current?.id === id) this.current = null;
@@ -126,7 +136,12 @@ class SnapshotStore {
     }
   }
 
-  async loadComments(apiBase: string, snapshotId: number, limit = 50, offset = 0): Promise<void> {
+  async loadComments(
+    apiBase: string,
+    snapshotId: number,
+    limit = 50,
+    offset = 0,
+  ): Promise<void> {
     this.error = null;
     try {
       const res = await fetch(
@@ -166,24 +181,25 @@ class SnapshotStore {
     author: string,
     body: string,
   ): Promise<Comment | null> {
-    try {
-      const res = await fetch(`${apiBase}/api/snapshots/${snapshotId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ author, body }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { message?: string }).message ?? `Error ${res.status}`);
-      }
-      return await res.json();
-    } catch (e) {
-      throw e;
+    const res = await fetch(`${apiBase}/api/snapshots/${snapshotId}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, body }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        (data as { message?: string }).message ?? `Error ${res.status}`,
+      );
     }
+    return await res.json();
   }
 
   connectWS(apiBase: string, snapshotId: number): void {
-    if (this._ws?.readyState === WebSocket.OPEN || this._ws?.readyState === WebSocket.CONNECTING) {
+    if (
+      this._ws?.readyState === WebSocket.OPEN ||
+      this._ws?.readyState === WebSocket.CONNECTING
+    ) {
       this.disconnectWS();
     }
     const wsBase = apiBase.replace(/^http/, "ws");
@@ -238,6 +254,6 @@ export function extractSnapshotId(path: string): number | null {
   const parts = path.split("/");
   const raw = parts[2];
   if (!raw) return null;
-  const id = parseInt(raw, 10);
-  return isNaN(id) || id <= 0 ? null : id;
+  const id = Number.parseInt(raw, 10);
+  return Number.isNaN(id) || id <= 0 ? null : id;
 }
