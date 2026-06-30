@@ -1,6 +1,5 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import uPlot, { type AlignedData, type Options } from "uplot";
   import { METRIC_META } from "@shared/constants";
   import { useWorker } from "../lib/workerController.svelte";
   import { settings, ACCENTS } from "../lib/settings.svelte";
@@ -22,82 +21,59 @@
 
   const controller = useWorker();
 
-  let container: HTMLDivElement;
+  let canvas: HTMLCanvasElement;
 
   onMount(() => {
-    // Snapshot props at mount time — metricName and height are static per instance.
     const meta = METRIC_META[metricName];
-    // Mutable state read by the draw hook on every repaint.
-    let densityGrid: Float64Array | null = null;
-    let valMin = meta.yRange[0] ?? 0;
-    let valMax = meta.yRange[1] ?? 1;
+    const dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext("2d")!;
 
-    // Dummy x and y buffers — drives uPlot's time scale; y anchors the y scale.
-    const xBuf = new Float64Array(2);
-    const yBuf = new Float64Array(2);
-    const data: AlignedData = [xBuf, yBuf];
+    let lastGrid: Float64Array | null = null;
+    let lastLo = meta.yRange[0] ?? 0;
+    let lastHi = meta.yRange[1] ?? 1;
 
-    function drawHeatmap(u: uPlot) {
-      if (!densityGrid) return;
+    function resize() {
+      const w = canvas.clientWidth;
+      const h = height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
 
-      const { left, top, width, height: bh } = u.bbox;
-      const ctx = u.ctx;
-      const cellW = width / HEATMAP_COLS;
-      const cellH = bh / HEATMAP_BUCKETS;
+    function render(grid: Float64Array, lo: number, hi: number) {
+      const w = canvas.clientWidth;
+      const h = height;
       const accentHex = ACCENTS[settings.current.accent].color;
 
-      ctx.save();
+      ctx.clearRect(0, 0, w, h);
+
+      const cellW = w / HEATMAP_COLS;
+      const cellH = h / HEATMAP_BUCKETS;
+
       for (let col = 0; col < HEATMAP_COLS; col++) {
         for (let bkt = 0; bkt < HEATMAP_BUCKETS; bkt++) {
-          const density = densityGrid[col * HEATMAP_BUCKETS + bkt];
+          const density = grid[col * HEATMAP_BUCKETS + bkt];
           if (density === 0) continue;
           ctx.fillStyle = interpolateColor(accentHex, density);
-          // Bucket 0 is the lowest value → draw at the bottom of the plot.
+          // bkt 0 = lowest value → bottom of canvas; flip Y axis.
           ctx.fillRect(
-            left + col * cellW,
-            top + (HEATMAP_BUCKETS - 1 - bkt) * cellH,
+            col * cellW,
+            (HEATMAP_BUCKETS - 1 - bkt) * cellH,
             Math.ceil(cellW) + 0.5,
             Math.ceil(cellH) + 0.5,
           );
         }
       }
-      ctx.restore();
+
+      // Y axis labels (min / max value)
+      ctx.fillStyle = "#94a3b8";
+      ctx.font = "10px monospace";
+      ctx.textAlign = "left";
+      ctx.fillText(hi.toFixed(1), 4, 12);
+      ctx.fillText(lo.toFixed(1), 4, h - 4);
     }
 
-    const opts: Options = {
-      width: container.clientWidth || 600,
-      height,
-      pxAlign: false,
-      cursor: { show: false },
-      scales: {
-        x: { time: true },
-        y: {
-          range: () => [valMin, valMax],
-        },
-      },
-      axes: [
-        { stroke: "#94a3b8", grid: { stroke: "#1e293b" } },
-        {
-          stroke: "#94a3b8",
-          grid: { stroke: "#1e293b" },
-          label: `${meta.label} (${meta.unit})`,
-        },
-      ],
-      series: [
-        {},
-        {
-          // Hidden anchor series — keeps uPlot's y scale in sync.
-          show: false,
-          label: "",
-          stroke: "transparent",
-          points: { show: false },
-        },
-      ],
-      legend: { show: false },
-      plugins: [{ hooks: { draw: [drawHeatmap] } }],
-    };
-
-    const plot = new uPlot(opts, data, container);
+    resize();
 
     const off = controller.onFrame((metrics) => {
       const series = metrics[metricName];
@@ -109,32 +85,23 @@
       if (tMax <= tMin) return;
 
       const [lo, hi] = valueBounds(v, meta.yRange[0], meta.yRange[1]);
-      valMin = lo;
-      valMax = hi;
-
-      densityGrid = bucketize(t, v, tMin, tMax, HEATMAP_COLS, lo, hi, HEATMAP_BUCKETS);
-
-      xBuf[0] = tMin;
-      xBuf[1] = tMax;
-      yBuf[0] = lo;
-      yBuf[1] = hi;
-      plot.setData(data, true);
+      lastLo = lo;
+      lastHi = hi;
+      lastGrid = bucketize(t, v, tMin, tMax, HEATMAP_COLS, lo, hi, HEATMAP_BUCKETS);
+      render(lastGrid, lo, hi);
     });
 
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        const w = Math.floor(e.contentRect.width);
-        if (w > 0) plot.setSize({ width: w, height });
-      }
+    const ro = new ResizeObserver(() => {
+      resize();
+      if (lastGrid) render(lastGrid, lastLo, lastHi);
     });
-    ro.observe(container);
+    ro.observe(canvas);
 
     return () => {
       off();
       ro.disconnect();
-      plot.destroy();
     };
   });
 </script>
 
-<div bind:this={container} class="w-full" style="height: {height}px"></div>
+<canvas bind:this={canvas} class="w-full block" style="height: {height}px"></canvas>
