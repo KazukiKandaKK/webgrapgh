@@ -46,6 +46,10 @@ class SnapshotStore {
 
   private _ws: WebSocket | null = null;
   private _wsSnapshotId: number | null = null;
+  private _wsApiBase: string | null = null;
+  private _wsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _wsBackoff = 1000;
+  private _wsIntentionalClose = false;
   private _commentsOffset = 0;
 
   async loadSnapshots(apiBase: string): Promise<void> {
@@ -196,15 +200,28 @@ class SnapshotStore {
   }
 
   connectWS(apiBase: string, snapshotId: number): void {
+    this._wsIntentionalClose = false;
+    if (this._wsReconnectTimer !== null) {
+      clearTimeout(this._wsReconnectTimer);
+      this._wsReconnectTimer = null;
+    }
     if (
       this._ws?.readyState === WebSocket.OPEN ||
       this._ws?.readyState === WebSocket.CONNECTING
     ) {
-      this.disconnectWS();
+      this._wsIntentionalClose = true;
+      this._ws.close();
     }
+    this._wsIntentionalClose = false;
+    this._wsApiBase = apiBase;
+    this._wsSnapshotId = snapshotId;
+    this._wsBackoff = 1000;
+    this._openWS(apiBase, snapshotId);
+  }
+
+  private _openWS(apiBase: string, snapshotId: number): void {
     const wsBase = apiBase.replace(/^http/, "ws");
     this._ws = new WebSocket(`${wsBase}/ws/snapshots`);
-    this._wsSnapshotId = snapshotId;
 
     this._ws.onmessage = (event) => {
       try {
@@ -218,16 +235,38 @@ class SnapshotStore {
       }
     };
 
+    this._ws.onopen = () => {
+      this._wsBackoff = 1000;
+    };
+
     this._ws.onerror = () => {
       // WS errors do not affect REST API availability
     };
 
     this._ws.onclose = () => {
       this._ws = null;
+      if (
+        !this._wsIntentionalClose &&
+        this._wsSnapshotId === snapshotId &&
+        this._wsApiBase === apiBase
+      ) {
+        this._wsReconnectTimer = setTimeout(() => {
+          this._wsReconnectTimer = null;
+          if (this._wsSnapshotId === snapshotId) {
+            this._openWS(apiBase, snapshotId);
+          }
+        }, this._wsBackoff);
+        this._wsBackoff = Math.min(this._wsBackoff * 2, 10000);
+      }
     };
   }
 
   disconnectWS(): void {
+    this._wsIntentionalClose = true;
+    if (this._wsReconnectTimer !== null) {
+      clearTimeout(this._wsReconnectTimer);
+      this._wsReconnectTimer = null;
+    }
     if (
       this._ws?.readyState === WebSocket.OPEN ||
       this._ws?.readyState === WebSocket.CONNECTING
@@ -236,6 +275,7 @@ class SnapshotStore {
     }
     this._ws = null;
     this._wsSnapshotId = null;
+    this._wsApiBase = null;
   }
 
   reset(): void {

@@ -25,6 +25,9 @@ CREATE INDEX IF NOT EXISTS idx_container_metrics_ts
 CREATE INDEX IF NOT EXISTS idx_container_metrics_key_ts
     ON container_metrics (container, metric, ts DESC);
 
+CREATE INDEX IF NOT EXISTS idx_container_metrics_ts_asc
+    ON container_metrics (ts ASC);
+
 -- Snapshots store a named point-in-time capture of one or more metric series.
 CREATE TABLE IF NOT EXISTS snapshots (
     id            BIGSERIAL    PRIMARY KEY,
